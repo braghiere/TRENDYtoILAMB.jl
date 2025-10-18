@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+TRENDYtoILAMB = "1f2b46cc-a11c-5e6d-8cf2-0d8bc9c657c3"
+
+[compat]
+Documenter = "1.1.2"

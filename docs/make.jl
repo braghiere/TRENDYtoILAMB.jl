@@ -17,5 +17,5 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/your-username/TRENDYtoILAMB.jl.git",
+    repo = "github.com/braghiere/TRENDYtoILAMB.jl.git",
 )
