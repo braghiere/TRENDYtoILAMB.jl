@@ -61,16 +61,36 @@ end
 
 Create time bounds array for ILAMB format.
 Returns an Array{Float64,2} with dimensions (n_times, 2) containing start and end days.
+For yearly data (when consecutive values differ by ~1), creates yearly bounds.
+For monthly data (when consecutive values differ by ~1/12), creates monthly bounds.
 """
 function create_time_bounds(years::Vector{<:Real}, reference_year::Int=1850)
     n_years = length(years)
     bounds = zeros(Float64, n_years, 2)
     
-    for (i, year) in enumerate(years)
-        # Calculate the time at the start of the month
-        bounds[i, 1] = convert_time_to_days([year], reference_year)[1]
-        # For the end bound, advance by 1/12 of a year (monthly data)
-        bounds[i, 2] = convert_time_to_days([year + 1/12], reference_year)[1] - 1
+    # Detect if this is yearly or monthly data
+    is_yearly = false
+    if n_years > 1
+        # Check the difference between first two points
+        diff = years[2] - years[1]
+        is_yearly = diff >= 0.9  # If difference is close to 1 year or more
+    else
+        # Single point - assume yearly
+        is_yearly = true
+    end
+    
+    if is_yearly
+        # Yearly data: bounds span from Jan 1 to Dec 31 (364 days for noleap)
+        for (i, year) in enumerate(years)
+            bounds[i, 1] = convert_time_to_days([year], reference_year)[1]
+            bounds[i, 2] = convert_time_to_days([year + 1], reference_year)[1] - 1
+        end
+    else
+        # Monthly data: bounds span one month
+        for (i, year) in enumerate(years)
+            bounds[i, 1] = convert_time_to_days([year], reference_year)[1]
+            bounds[i, 2] = convert_time_to_days([year + 1/12], reference_year)[1] - 1
+        end
     end
     
     return bounds
