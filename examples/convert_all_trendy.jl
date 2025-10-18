@@ -168,6 +168,15 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     converted_files += 1
                     successful_vars[var] = get(successful_vars, var, 0) + 1
                     
+                    # Force garbage collection every file to prevent memory buildup
+                    GC.gc()
+                    
+                    # Aggressive GC every 10 files
+                    if converted_files % 10 == 0
+                        println("    🗑️  Running garbage collection ($(converted_files) files converted)...")
+                        GC.gc(true)
+                    end
+                    
                 catch e
                     error_type = string(typeof(e))
                     error_types[error_type] = get(error_types, error_type, 0) + 1
@@ -187,6 +196,9 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     end
                     
                     push!(failed_files, joinpath(model, sim, file))
+                    
+                    # Force GC after errors too
+                    GC.gc()
                 end
             end
         end
