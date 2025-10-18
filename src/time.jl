@@ -1,3 +1,6 @@
+# Module-level constants for time calculations
+const DAYS_PER_MONTH_APPROX = 365.0 / 12.0  # ~30.4167 days per month (365/12)
+
 """
     parse_units(time_units::String)
 
@@ -157,8 +160,7 @@ function create_time_bounds_from_days(days::Vector{Int})
     bounds = zeros(Float64, 2, n_times)
     
     # For monthly data, each bound spans approximately 30.4 days (365/12)
-    days_per_month = 365.0 / 12.0
-    half_month = days_per_month / 2.0
+    half_month = DAYS_PER_MONTH_APPROX / 2.0
     
     for i in 1:n_times
         bounds[1, i] = days[i] - half_month

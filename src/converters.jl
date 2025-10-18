@@ -19,10 +19,13 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     
     # Check if time values are simple month indices (1, 2, 3, ... n)
     # This happens with CARDAMOM which lacks proper time units
+    # Only treat as month indices if time units are not standard (for robustness)
+    is_nonstandard_units = !occursin(r"^(days|months|years|hours) since ", time_units)
     is_month_index = (length(time_values) > 1 && 
                      time_values[1] == 1 && 
                      time_values[2] == 2 &&
-                     all(diff(time_values) .== 1))
+                     all(diff(time_values) .== 1) &&
+                     is_nonstandard_units)
     
     if is_month_index && dataset.model == "CARDAMOM"
         # CARDAMOM: Time values are month indices starting from 1
@@ -73,18 +76,12 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             start_year = 1850 + floor(Int, start_years_from_1850)
             start_day_in_year = start_days_since_1850 - (start_year - 1850) * 365.0
             start_month = max(1, min(12, ceil(Int, (start_day_in_year / 365.0) * 12)))
-            if start_month == 0
-                start_month = 1
-            end
             
             end_days_since_1850 = days[end]
             end_years_from_1850 = end_days_since_1850 / 365.0
             end_year = 1850 + floor(Int, end_years_from_1850)
             end_day_in_year = end_days_since_1850 - (end_year - 1850) * 365.0
             end_month = max(1, min(12, ceil(Int, (end_day_in_year / 365.0) * 12)))
-            if end_month == 0
-                end_month = 12
-            end
         end
         
         # Format dates as YYYYMM
