@@ -14,13 +14,18 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     time_values = ds_in["time"][:]
     
     # Get time units with fallback
-    time_units = get(ds_in["time"].attrib, "units", "days since 1850-01-01")
+    # Get time units with fallback - but remember if it was actually missing
+    time_units_attr = get(ds_in["time"].attrib, "units", nothing)
+    has_time_units = time_units_attr !== nothing
+    time_units = something(time_units_attr, "days since 1850-01-01")
     reference_year = parse_units(time_units)
     
     # Check if time values are simple month indices (1, 2, 3, ... n)
     # This happens with CARDAMOM which lacks proper time units
-    # Only treat as month indices if time units are not standard (for robustness)
-    is_nonstandard_units = !occursin(r"^(days|months|years|hours) since ", time_units)
+    # Only treat as month indices if:
+    # 1. Time units are missing or non-standard, AND
+    # 2. Values form consecutive sequence starting from 1
+    is_nonstandard_units = !has_time_units || !occursin(r"^(days|months|years|hours) since ", time_units)
     is_month_index = (length(time_values) > 1 && 
                      time_values[1] == 1 && 
                      time_values[2] == 2 &&
