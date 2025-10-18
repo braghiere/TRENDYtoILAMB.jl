@@ -1,0 +1,19 @@
+# Julia package specific
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+/Manifest.toml
+/docs/build/
+
+# Output directories
+/output/
+*.nc
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Editor specific
+*.swp
+*~
+.vscode/

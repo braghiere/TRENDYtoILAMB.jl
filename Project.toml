@@ -1,0 +1,18 @@
+name = "TRENDYtoILAMB"
+uuid = "1f2b46cc-a315-4379-8d78-bcaf581ae102"
+authors = ["Renato Braghiere <renatobraghiere@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+
+[compat]
+julia = "1.9"
+NCDatasets = "0.12"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
