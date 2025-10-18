@@ -52,10 +52,18 @@ Based on analysis of TRENDYv13 dataset:
 function convert_all_trendy_files(trendy_dir::String; output_base::String="output")
     # List of variables that ILAMB uses (based on ILAMB benchmarking requirements)
     ilamb_vars = [
+        # Carbon cycle fluxes
         "gpp", "nbp", "npp", "ra", "rh", "lai", 
+        # Hydrology
         "mrro", "mrros", "mrso", "evapotrans",
+        # Carbon pools
         "cSoil", "cVeg", "cLitter", "cProduct",
+        # Fire
         "burntArea", "fFire",
+        # Forcing variables (used in ILAMB SoilCarbon and other confrontations)
+        "tas",    # Near-surface air temperature
+        "pr",     # Precipitation
+        "rsds",   # Surface downward shortwave radiation
         # Add more ILAMB variables here as needed
     ]
 
@@ -81,8 +89,8 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
             # Skip if simulation directory doesn't exist
             !isdir(sim_dir) && continue
             
-            # Create output directory
-            output_dir = joinpath(output_base, model, sim)
+            # Create output directory for this model (no simulation subdirectory)
+            output_dir = joinpath(output_base, model)
             mkpath(output_dir)
             
             # Process only ILAMB-relevant NetCDF files

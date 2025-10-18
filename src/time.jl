@@ -44,10 +44,13 @@ function convert_time_to_days(times::Vector{<:Any}, reference_year::Int=1850)
     for (i, t) in enumerate(times)
         if t isa AbstractFloat || t isa Integer
             # Handle numeric year values
-            days[i] = floor(Int, (t - reference_year) * 365)
+            # t represents years since reference_year, so absolute year is reference_year + t
+            # Then convert to days since 1850
+            absolute_year = reference_year + t
+            days[i] = floor(Int, (absolute_year - 1850) * 365)
         elseif t isa NCDatasets.DateTimeNoLeap || t isa Dates.AbstractDateTime
             # For NCDatasets datetime types, just compute the offset in years and days
-            days[i] = (Dates.year(t) - reference_year) * 365 + (Dates.dayofyear(t) - 1)
+            days[i] = (Dates.year(t) - 1850) * 365 + (Dates.dayofyear(t) - 1)
         else
             error("Unsupported time type: $(typeof(t))")
         end
@@ -141,4 +144,26 @@ function create_time_bounds(datetimes::Vector, reference_year::Int=1850)
         # Numeric values - use the existing method
         return create_time_bounds(convert(Vector{Float64}, datetimes), reference_year)
     end
+end
+
+"""
+    create_time_bounds_from_days(days::Vector{Int})
+
+Create time bounds array for monthly data from days since 1850.
+Returns bounds as a 2 x n_times array (start_days, end_days for each month).
+"""
+function create_time_bounds_from_days(days::Vector{Int})
+    n_times = length(days)
+    bounds = zeros(Float64, 2, n_times)
+    
+    # For monthly data, each bound spans approximately 30.4 days (365/12)
+    days_per_month = 365.0 / 12.0
+    half_month = days_per_month / 2.0
+    
+    for i in 1:n_times
+        bounds[1, i] = days[i] - half_month
+        bounds[2, i] = days[i] + half_month
+    end
+    
+    return bounds
 end
