@@ -1,14 +1,11 @@
-using Documenter
 using Pkg
 
-# Clean environment setup
+# Setup docs environment  
 Pkg.activate(@__DIR__)
-if isfile(joinpath(@__DIR__, "Manifest.toml"))
-    rm(joinpath(@__DIR__, "Manifest.toml"))
-end
 Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
 Pkg.instantiate()
 
+using Documenter
 using TRENDYtoILAMB
 
 makedocs(
@@ -18,6 +15,7 @@ makedocs(
         canonical = "https://braghiere.github.io/TRENDYtoILAMB.jl"
     ),
     modules = [TRENDYtoILAMB],
+    checkdocs = :exports,  # Only check exported functions
     pages = [
         "Home" => "index.md",
         "Manual" => [

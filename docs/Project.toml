@@ -1,6 +1,7 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+TRENDYtoILAMB = "1f2b46cc-a315-4379-8d78-bcaf581ae102"
 
 [compat]
 Documenter = "1"
