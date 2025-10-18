@@ -2,14 +2,104 @@
     convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
 
 Convert a TRENDY dataset to ILAMB format.
+
+Output filename format: {variable}_Lmon_{model}_historical_{simulation}_gn_{start_date}-{end_date}.nc
+Example: gpp_Lmon_CARDAMOM_historical_S3_gn_200101-202112.nc
 """
 function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     # Open input dataset
     ds_in = Dataset(dataset.path)
     
-    # Create output filename and ensure directory exists
-    output_file = joinpath(output_dir, 
-                          "$(dataset.model)_$(dataset.simulation)_$(dataset.variable)_ILAMB.nc")
+    # Get time information to determine date range
+    time_values = ds_in["time"][:]
+    
+    # Get time units with fallback
+    # Get time units with fallback - but remember if it was actually missing
+    time_units_attr = get(ds_in["time"].attrib, "units", nothing)
+    has_time_units = time_units_attr !== nothing
+    time_units = something(time_units_attr, "days since 1850-01-01")
+    reference_year = parse_units(time_units)
+    
+    # Check if time values are simple month indices (1, 2, 3, ... n)
+    # This happens with CARDAMOM which lacks proper time units
+    # Only treat as month indices if:
+    # 1. Time units are missing or non-standard, AND
+    # 2. Values form consecutive sequence starting from 1
+    is_nonstandard_units = !has_time_units || !occursin(r"^(days|months|years|hours) since ", time_units)
+    is_month_index = (length(time_values) > 1 && 
+                     time_values[1] == 1 && 
+                     time_values[2] == 2 &&
+                     all(diff(time_values) .== 1) &&
+                     is_nonstandard_units)
+    
+    if is_month_index && dataset.model == "CARDAMOM"
+        # CARDAMOM: Time values are month indices starting from 1
+        # CARDAMOM data starts in January 2003
+        n_months = length(time_values)
+        start_year = 2003
+        start_month = 1
+        
+        # Calculate end year and month
+        total_months = start_month - 1 + n_months
+        end_year = start_year + div(total_months - 1, 12)
+        end_month = ((total_months - 1) % 12) + 1
+        
+        # Format dates as YYYYMM
+        start_date = string(start_year) * lpad(start_month, 2, '0')
+        end_date = string(end_year) * lpad(end_month, 2, '0')
+        
+        # Convert month indices to days since 1850 for internal processing
+        days = zeros(Int, n_months)
+        for i in 1:n_months
+            month_offset = i - 1
+            year = start_year + div(month_offset, 12)
+            month = (month_offset % 12) + 1
+            # Days since 1850-01-01 to the middle of this month
+            days_to_year = (year - 1850) * 365
+            days_to_month = floor(Int, (month - 0.5) * 365.0 / 12.0)
+            days[i] = days_to_year + days_to_month
+        end
+        
+        time_bounds = create_time_bounds_from_days(days)
+    else
+        # Normal case: convert time values using the standard method
+        days = convert_time_to_days(time_values, reference_year)
+        time_bounds = create_time_bounds(time_values, reference_year)
+        
+        # Calculate start and end dates
+        # If time_values are already datetime objects, extract year/month directly
+        if !isempty(time_values) && (time_values[1] isa NCDatasets.CFTime.AbstractCFDateTime || 
+                                      time_values[1] isa Dates.AbstractDateTime)
+            start_year = Dates.year(time_values[1])
+            start_month = Dates.month(time_values[1])
+            end_year = Dates.year(time_values[end])
+            end_month = Dates.month(time_values[end])
+        else
+            # Fallback: calculate from days since 1850
+            start_days_since_1850 = days[1]
+            start_years_from_1850 = start_days_since_1850 / 365.0
+            start_year = 1850 + floor(Int, start_years_from_1850)
+            start_day_in_year = start_days_since_1850 - (start_year - 1850) * 365.0
+            start_month = max(1, min(12, ceil(Int, (start_day_in_year / 365.0) * 12)))
+            
+            end_days_since_1850 = days[end]
+            end_years_from_1850 = end_days_since_1850 / 365.0
+            end_year = 1850 + floor(Int, end_years_from_1850)
+            end_day_in_year = end_days_since_1850 - (end_year - 1850) * 365.0
+            end_month = max(1, min(12, ceil(Int, (end_day_in_year / 365.0) * 12)))
+        end
+        
+        # Format dates as YYYYMM
+        start_date = string(start_year) * lpad(start_month, 2, '0')
+        end_date = string(end_year) * lpad(end_month, 2, '0')
+    end
+    
+    # Create ILAMB-compliant filename
+    # Format: {variable}_Lmon_ENSEMBLE-{model}_historical_r1i1p1f1_gn_{start_date}-{end_date}.nc
+    filename = "$(dataset.variable)_Lmon_ENSEMBLE-$(dataset.model)_historical_r1i1p1f1_gn_$(start_date)-$(end_date).nc"
+    
+    # Output directly in model directory (no S3 subdirectory)
+    output_file = joinpath(output_dir, filename)
     mkpath(dirname(output_file))
     
     # Remove existing file if it exists
@@ -72,18 +162,10 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             rethrow(e)
         end
         
-        # Handle time dimension
-        years = ds_in["time"][:]
-        time_units = ds_in["time"].attrib["units"]
-        @info "Raw time values:" first_10_years=years[1:10] time_units=time_units
-        
-        # Parse reference year from units
-        reference_year = parse_units(time_units)
+        # Log time information for debugging
+        @info "Raw time values:" first_10_values=time_values[1:min(10, length(time_values))] time_units=time_units
         @info "Using reference year" reference_year=reference_year
-        
-        # Convert to days since 1850
-        days = convert_time_to_days(years, reference_year)
-        time_bounds = create_time_bounds(years, reference_year)
+        @info "Computed days since 1850:" first_3_days=days[1:min(3, length(days))] last_3_days=days[max(1, end-2):end]
         
         # Define the nb dimension first
         if !("nb" in keys(ds_out.dim))
@@ -101,7 +183,13 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         
         # Define time bounds variable
         @info "Creating time_bounds variable"
-        defVar(ds_out, "time_bounds", time_bounds, ("time", "nb"))
+        # time_bounds should be (nb, time) from create_time_bounds_from_days
+        # but defVar expects (time, nb), so we need to transpose if needed
+        if size(time_bounds, 1) == 2  # It's (2, n_times), need to transpose
+            defVar(ds_out, "time_bounds", permutedims(time_bounds, (2, 1)), ("time", "nb"))
+        else
+            defVar(ds_out, "time_bounds", time_bounds, ("time", "nb"))
+        end
         
         # Copy lat/lon coordinates
         if haskey(ds_in, "lat")
