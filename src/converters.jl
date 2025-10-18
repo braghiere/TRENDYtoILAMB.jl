@@ -74,8 +74,16 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         
         # Handle time dimension
         years = ds_in["time"][:]
-        days = convert_time_to_days(years)
-        time_bounds = create_time_bounds(years)
+        time_units = ds_in["time"].attrib["units"]
+        @info "Raw time values:" first_10_years=years[1:10] time_units=time_units
+        
+        # Parse reference year from units
+        reference_year = parse_units(time_units)
+        @info "Using reference year" reference_year=reference_year
+        
+        # Convert to days since 1850
+        days = convert_time_to_days(years, reference_year)
+        time_bounds = create_time_bounds(years, reference_year)
         
         # Define the nb dimension first
         if !("nb" in keys(ds_out.dim))

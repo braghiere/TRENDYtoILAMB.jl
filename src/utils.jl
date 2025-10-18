@@ -76,8 +76,32 @@ function verify_conversion(dataset::TRENDYDataset, ilamb_dataset::ILAMBDataset)
         data_orig = ds_orig[var_name][:]
         data_ilamb = ds_ilamb[var_name][:]
         
-        if size(data_orig) == size(data_ilamb) && all(data_orig .≈ data_ilamb)
-            println("\nData verification: ✓ Variable data matches (within floating-point tolerance)")
+        # Handle missing values in comparison
+        if size(data_orig) == size(data_ilamb)
+            # Compare only non-missing values
+            mask_orig = .!ismissing.(data_orig)
+            mask_ilamb = .!ismissing.(data_ilamb)
+            
+            if all(mask_orig .== mask_ilamb)
+                # Same missing pattern
+                valid_data_orig = data_orig[mask_orig]
+                valid_data_ilamb = data_ilamb[mask_ilamb]
+                
+                if isempty(valid_data_orig)
+                    println("\nData verification: ⚠️  All values are missing")
+                elseif all(valid_data_orig .≈ valid_data_ilamb)
+                    println("\nData verification: ✓ Variable data matches (within floating-point tolerance)")
+                else
+                    println("\nData verification: ✗ Variable data differs")
+                    diff = abs.(valid_data_orig .- valid_data_ilamb)
+                    println("Max absolute difference: ", maximum(diff))
+                    println("Mean absolute difference: ", mean(diff))
+                end
+            else
+                println("\nData verification: ✗ Missing value patterns differ")
+                println("Original missing count: ", sum(.!mask_orig))
+                println("ILAMB missing count: ", sum(.!mask_ilamb))
+            end
         else
             println("\nData verification: ✗ Variable data differs")
             println("Original size: ", size(data_orig))
