@@ -1,11 +1,13 @@
 using Documenter
 using Pkg
 
-# Temporarily add the package in dev mode if not already present
-if !haskey(Pkg.project().dependencies, "TRENDYtoILAMB")
-    Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
-    Pkg.instantiate()
+# Clean environment setup
+Pkg.activate(@__DIR__)
+if isfile(joinpath(@__DIR__, "Manifest.toml"))
+    rm(joinpath(@__DIR__, "Manifest.toml"))
 end
+Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
+Pkg.instantiate()
 
 using TRENDYtoILAMB
 
