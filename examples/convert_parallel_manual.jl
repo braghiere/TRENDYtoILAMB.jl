@@ -179,9 +179,11 @@ function create_launcher_scripts()
                         end
                     end
                     
-                    # Convert
+                    # Convert - output to model-specific directory
+                    model_output_dir = joinpath(OUTPUT_DIR, model)
+                    mkpath(model_output_dir)
                     dataset = TRENDYDataset(file, model, sim, var)
-                    ilamb_dataset = convert_to_ilamb(dataset, output_dir=OUTPUT_DIR)
+                    ilamb_dataset = convert_to_ilamb(dataset, output_dir=model_output_dir)
                     verify_conversion(dataset, ilamb_dataset)
                     
                     global converted += 1
