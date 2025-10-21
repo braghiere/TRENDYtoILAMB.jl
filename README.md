@@ -100,14 +100,10 @@ For production use and large datasets:
 ```bash
 cd TRENDYtoILAMB.jl
 
-# 1. Generate parallel conversion scripts
+# Generate and launch parallel conversion (6 independent processes)
 julia --project=. examples/convert_parallel_manual.jl
 
-# 2. Launch parallel conversion (6 independent processes)
-/home/renatob/launch_all_groups.sh
-
-# 3. Monitor progress
-/home/renatob/check_conversion_status.sh
+# The script will generate launcher scripts and provide instructions
 ```
 
 **Performance**: ~400 files/hour (~2 hours for full TRENDY dataset - **100× faster!**)
@@ -164,9 +160,8 @@ ps aux | grep julia | grep convert_all_trendy
 tail -f conversion.log
 find /data/ilamb_ready -name "*.nc" -type f | wc -l
 
-# Parallel conversion
-/home/renatob/check_conversion_status.sh
-tail -f /home/renatob/group_*.log
+# Parallel conversion (check generated scripts for actual paths)
+tail -f group_*.log  # Monitor progress
 ```
 
 ### Example 4: Parallel Conversion
@@ -176,13 +171,7 @@ For fastest processing (100× speedup):
 ```bash
 cd TRENDYtoILAMB.jl
 julia --project=. examples/convert_parallel_manual.jl
-/home/renatob/launch_all_groups.sh
-```
-
-Monitor progress:
-
-```bash
-/home/renatob/check_conversion_status.sh
+# Follow the instructions printed by the script to launch and monitor
 ```
 
 See [examples/README.md](examples/README.md) for more examples.
@@ -324,10 +313,10 @@ Edit the `TEST_MODEL` constant to test different models.
 If you use this package in your research, please cite:
 
 ```bibtex
-@software{trendytoilamb2024,
+@software{trendytoilamb2025,
   author = {Braghiere, Renato K.},
   title = {TRENDYtoILAMB.jl: Convert TRENDY outputs to ILAMB format},
-  year = {2024},
+  year = {2025},
   url = {https://github.com/braghiere/TRENDYtoILAMB.jl}
 }
 ```

@@ -12,8 +12,9 @@ With parallel processing: ~840 files ÷ 6 groups ÷ 70 files/hour/group = ~2 hou
 
 using TRENDYtoILAMB
 
-const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_ready"
+# Configure these paths for your system
+const TRENDY_DIR = get(ENV, "TRENDY_DIR", "/path/to/TRENDYv13")
+const OUTPUT_DIR = get(ENV, "OUTPUT_DIR", "/path/to/ilamb_ready")
 
 # ILAMB variables to process
 const ILAMB_VARS = [
@@ -25,6 +26,9 @@ const ILAMB_VARS = [
 
 # Number of parallel groups (adjust based on available cores)
 const N_GROUPS = 6
+
+# Directory for generated parallel conversion scripts (within package)
+const SCRIPT_DIR = joinpath(dirname(@__DIR__), "generated_scripts")
 
 # Get all NetCDF files from TRENDY directory
 function find_all_netcdf_files()
@@ -114,6 +118,9 @@ end
 
 # Create launcher script
 function create_launcher_scripts()
+    # Ensure script directory exists
+    mkpath(SCRIPT_DIR)
+    
     println("🔍 Finding all NetCDF files...")
     all_files = find_all_netcdf_files()
     println("   Found $(length(all_files)) total files")
@@ -136,10 +143,10 @@ function create_launcher_scripts()
             continue
         end
         
-        script_path = "/home/renatob/convert_group_$i.jl"
+        script_path = joinpath(SCRIPT_DIR, "convert_group_$i.jl")
         open(script_path, "w") do io
             println(io, """
-            #!/usr/bin/env julia --project=/home/renatob/TRENDYtoILAMB.jl
+            #!/usr/bin/env julia --project=$(dirname(@__DIR__))
             
             using TRENDYtoILAMB
             using NCDatasets
@@ -155,7 +162,7 @@ function create_launcher_scripts()
             println(io, """
             ]
             
-            const OUTPUT_DIR = "/home/renatob/data/ilamb_ready"
+            const OUTPUT_DIR = get(ENV, "OUTPUT_DIR", "/path/to/ilamb_ready")
             
             println("="^60)
             println("GROUP $i: Processing \$(length(files)) files")
@@ -221,7 +228,7 @@ function create_launcher_scripts()
     end
     
     # Create master launch script
-    launch_script = "/home/renatob/launch_all_groups.sh"
+    launch_script = joinpath(SCRIPT_DIR, "launch_all_groups.sh")
     open(launch_script, "w") do io
         println(io, """
         #!/bin/bash
@@ -235,7 +242,7 @@ function create_launcher_scripts()
         for i in 1:N_GROUPS
             if i <= length(groups) && !isempty(groups[i])
                 println(io, """
-                nohup julia --project=/home/renatob/TRENDYtoILAMB.jl /home/renatob/convert_group_$i.jl > /home/renatob/group_$i.log 2>&1 &
+                nohup julia --project=$(dirname(@__DIR__)) $(SCRIPT_DIR)/convert_group_$i.jl > $(SCRIPT_DIR)/group_$i.log 2>&1 &
                 echo "✓ Started group $i: $(length(groups[i])) files (PID: \$!)"
                 """)
             end
@@ -247,9 +254,9 @@ function create_launcher_scripts()
         printf '=%.0s' {1..70}; echo
         echo "✅ All $(length(filter(!isempty, groups))) groups launched!"
         printf '=%.0s' {1..70}; echo
-        echo "📝 Logs: /home/renatob/group_*.log"
-        echo "📊 Monitor: watch -n 10 'tail -n 2 /home/renatob/group_*.log'"
-        echo "📂 Progress: find /home/renatob/data/ilamb_ready -name '*.nc' | wc -l"
+        echo "📝 Logs: $(SCRIPT_DIR)/group_*.log"
+        echo "📊 Monitor: watch -n 10 'tail -n 2 $(SCRIPT_DIR)/group_*.log'"
+        echo "📂 Progress: find $(OUTPUT_DIR) -name '*.nc' | wc -l"
         echo ""
         """)
     end
@@ -263,7 +270,7 @@ function create_launcher_scripts()
     println("\n📋 To start conversion:")
     println("   $launch_script")
     println("\n📊 To monitor progress:")
-    println("   watch -n 10 'tail -n 2 /home/renatob/group_*.log'")
+    println("   watch -n 10 'tail -n 2 \$SCRIPT_DIR/group_*.log'")
     println("\n⏱️  Estimated time: ~2 hours (100× speedup)")
     println("="^70)
 end
