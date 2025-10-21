@@ -7,6 +7,11 @@ This script tests the parallel conversion on just a few files to verify:
 3. Output files are correct
 4. Speedup is achieved
 
+
+⚠️  WARNING: This approach is NOT RECOMMENDED and is archived for reference only.
+   NetCDF/HDF5 libraries are not thread-safe, causing segfaults and data corruption.
+   Use convert_parallel_manual.jl instead (separate processes, not threads).
+
 Run with:
     julia -t 8 --project=. examples/test_parallel_conversion.jl
 =#

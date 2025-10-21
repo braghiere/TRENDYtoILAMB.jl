@@ -7,7 +7,7 @@ run each group in a separate process.
 This approach uses 6 independent sequential processes to leverage
 96 cores without the complexity of distributed computing.
 
-Expected: ~687 files ÷ 6 groups ÷ 4.2 files/hour = ~27 hours
+With parallel processing: ~840 files ÷ 6 groups ÷ 70 files/hour/group = ~2 hours
 """
 
 using TRENDYtoILAMB
@@ -22,6 +22,9 @@ const ILAMB_VARS = [
     "cSoil", "cVeg", "cLitter", "cProduct",
     "burntArea", "fFire", "tas", "pr", "rsds"
 ]
+
+# Number of parallel groups (adjust based on available cores)
+const N_GROUPS = 6
 
 # Get all NetCDF files from TRENDY directory
 function find_all_netcdf_files()
@@ -85,7 +88,7 @@ function is_converted(file_path)
 end
 
 # Split files into N groups by model
-function split_by_model(files, n_groups=8)
+function split_by_model(files, n_groups=N_GROUPS)
     # Group by model
     model_files = Dict{String, Vector{String}}()
     for file in files
@@ -125,7 +128,7 @@ function create_launcher_scripts()
     end
     
     # Split into 8 groups by model
-    groups = split_by_model(remaining_files, 8)
+    groups = split_by_model(remaining_files, N_GROUPS)
     
     # Create a conversion script for each group
     for (i, group_files) in enumerate(groups)
@@ -229,7 +232,7 @@ function create_launcher_scripts()
         
         """)
         
-        for i in 1:8
+        for i in 1:N_GROUPS
             if i <= length(groups) && !isempty(groups[i])
                 println(io, """
                 nohup julia --project=/home/renatob/TRENDYtoILAMB.jl /home/renatob/convert_group_$i.jl > /home/renatob/group_$i.log 2>&1 &
@@ -261,7 +264,7 @@ function create_launcher_scripts()
     println("   $launch_script")
     println("\n📊 To monitor progress:")
     println("   watch -n 10 'tail -n 2 /home/renatob/group_*.log'")
-    println("\n⏱️  Estimated time: ~20-24 hours (8x speedup)")
+    println("\n⏱️  Estimated time: ~2 hours (100× speedup)")
     println("="^70)
 end
 
