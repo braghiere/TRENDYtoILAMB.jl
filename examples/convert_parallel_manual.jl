@@ -4,10 +4,10 @@
 Manual parallel conversion: Split files by model into groups,
 run each group in a separate process.
 
-This approach uses 8 independent sequential processes to leverage
+This approach uses 6 independent sequential processes to leverage
 96 cores without the complexity of distributed computing.
 
-Expected: ~687 files ÷ 8 groups ÷ 4.2 files/hour = ~20 hours
+Expected: ~687 files ÷ 6 groups ÷ 4.2 files/hour = ~27 hours
 """
 
 using TRENDYtoILAMB
