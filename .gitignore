@@ -7,7 +7,24 @@
 
 # Output directories
 /output/
+/test_output/
+/ilamb_ready/
 *.nc
+
+# Conversion scripts and logs (generated)
+/convert_group_*.jl
+/launch_all_groups.sh
+/monitor_*.sh
+/check_conversion_status.sh
+group_*.log
+conversion.log
+*.log
+
+# Temporary and analysis files
+trendy_analysis.json
+*.json
+COMMIT_MESSAGE.txt
+PUSH_CHECKLIST.md
 
 # OS specific
 .DS_Store
@@ -17,3 +34,4 @@ Thumbs.db
 *.swp
 *~
 .vscode/
+.idea/

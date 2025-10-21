@@ -73,7 +73,9 @@ ilamb_dataset = convert_to_ilamb(dataset, output_dir="/path/to/output")
 verify_conversion(dataset, ilamb_dataset)
 ```
 
-### Batch Convert All Models
+### Batch Convert All Models (Sequential)
+
+For small datasets or testing:
 
 ```julia
 using TRENDYtoILAMB
@@ -89,10 +91,39 @@ cd TRENDYtoILAMB.jl
 julia --project=. examples/convert_all_trendy.jl
 ```
 
-For background processing (recommended for large datasets):
+**Performance**: ~4.2 files/hour (~7 days for full TRENDY dataset)
+
+### Batch Convert with Parallel Processing ⭐ **RECOMMENDED**
+
+For production use and large datasets:
 
 ```bash
+cd TRENDYtoILAMB.jl
+
+# 1. Generate parallel conversion scripts
+julia --project=. examples/convert_parallel_manual.jl
+
+# 2. Launch parallel conversion (6 independent processes)
+/home/renatob/launch_all_groups.sh
+
+# 3. Monitor progress
+/home/renatob/check_conversion_status.sh
+```
+
+**Performance**: ~400 files/hour (~2 hours for full TRENDY dataset - **100× faster!**)
+
+See [docs/PARALLEL_CONVERSION.md](docs/PARALLEL_CONVERSION.md) for detailed guide.
+
+### Background Processing
+
+For long-running conversions:
+
+```bash
+# Sequential
 nohup julia --project=. examples/convert_all_trendy.jl > conversion.log 2>&1 &
+
+# Parallel (already runs in background)
+/home/renatob/launch_all_groups.sh
 ```
 
 ## Usage Examples
@@ -128,15 +159,46 @@ close(ds)
 ### Example 3: Monitor Batch Conversion
 
 ```bash
-# Check running processes
+# Sequential conversion
 ps aux | grep julia | grep convert_all_trendy
-
-# Monitor log file
 tail -f conversion.log
-
-# Count converted files
 find /data/ilamb_ready -name "*.nc" -type f | wc -l
+
+# Parallel conversion
+/home/renatob/check_conversion_status.sh
+tail -f /home/renatob/group_*.log
 ```
+
+### Example 4: Parallel Conversion
+
+For fastest processing (100× speedup):
+
+```bash
+cd TRENDYtoILAMB.jl
+julia --project=. examples/convert_parallel_manual.jl
+/home/renatob/launch_all_groups.sh
+```
+
+Monitor progress:
+
+```bash
+/home/renatob/check_conversion_status.sh
+```
+
+See [examples/README.md](examples/README.md) for more examples.
+
+## Performance
+
+TRENDYtoILAMB.jl offers two conversion modes:
+
+| Mode | Speed | Time (840 files) | Best For |
+|------|-------|------------------|----------|
+| **Sequential** | 4.2 files/hour | ~7 days | Testing, small datasets |
+| **Parallel (6 workers)** ⭐ | 400 files/hour | ~2 hours | **Production, large datasets** |
+
+**Parallel processing is ~100× faster** and recommended for production use.
+
+See [docs/PARALLEL_CONVERSION.md](docs/PARALLEL_CONVERSION.md) for setup guide.
 
 ## Directory Structure
 
@@ -248,6 +310,14 @@ julia --project=. examples/test_convert_single_model.jl
 ```
 
 Edit the `TEST_MODEL` constant to test different models.
+
+### Documentation
+
+- [Main README](README.md) - Package overview and usage
+- [Examples README](examples/README.md) - Example scripts guide
+- [Parallel Conversion Guide](docs/PARALLEL_CONVERSION.md) - Parallel processing setup
+- [Development Docs](docs/dev/) - Technical documentation and development notes
+- [CHANGELOG](CHANGELOG.md) - Version history and changes
 
 ## Citation
 
