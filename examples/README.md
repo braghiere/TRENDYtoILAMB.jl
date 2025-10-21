@@ -141,7 +141,7 @@ ilamb_vars = [
 In `convert_parallel_manual.jl`, change the number of groups:
 
 ```julia
-groups = split_by_model(remaining_files, 12)  # Change 6 → 12 for more parallelism
+groups = split_by_model(remaining_files, 12)  # Change 8 → 12 for more parallelism (default is 8)
 ```
 
 ---
