@@ -165,11 +165,15 @@ function create_launcher_scripts()
             for (idx, file) in enumerate(files)
                 println("\\n[\$idx/$(length(group_files))] \$(basename(file))")
                 
-                # Parse filename
-                parts = split(basename(file), "_")
-                model = parts[1]
-                sim = parts[2]
-                var = parts[end][1:end-3]
+                # Extract model from directory path (not filename - filenames can have inconsistent casing)
+                # Path structure: /path/to/TRENDYv13/MODEL/S3/file.nc
+                path_parts = splitpath(file)
+                model = path_parts[end-2]  # MODEL directory
+                sim = path_parts[end-1]     # S3 directory
+                
+                # Parse variable from filename
+                filename_parts = split(basename(file), "_")
+                var = filename_parts[end][1:end-3]  # Remove .nc extension
                 
                 try
                     # Validate file
