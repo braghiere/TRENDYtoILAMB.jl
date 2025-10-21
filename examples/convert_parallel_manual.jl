@@ -241,9 +241,9 @@ function create_launcher_scripts()
         println(io, """
         
         echo ""
-        echo "="^70
+        printf '=%.0s' {1..70}; echo
         echo "✅ All $(length(filter(!isempty, groups))) groups launched!"
-        echo "="^70
+        printf '=%.0s' {1..70}; echo
         echo "📝 Logs: /home/renatob/group_*.log"
         echo "📊 Monitor: watch -n 10 'tail -n 2 /home/renatob/group_*.log'"
         echo "📂 Progress: find /home/renatob/data/ilamb_ready -name '*.nc' | wc -l"
