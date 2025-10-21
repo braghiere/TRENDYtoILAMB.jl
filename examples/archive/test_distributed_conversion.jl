@@ -146,7 +146,6 @@ println("✓ Converted: $converted_count")
 println("❌ Failed: $failed_count")
 
 if converted_count > 0
-if converted_count > 0
     rate_per_hour = (converted_count / elapsed) * 3600
     println()
     println("⚡ Rate: $(round(rate_per_hour, digits=1)) files/hour")
