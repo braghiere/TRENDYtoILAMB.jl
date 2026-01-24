@@ -16,7 +16,8 @@ using NCDatasets
         
         bounds = create_time_bounds(time_values, reference_year)
         @test size(bounds) == (3, 2)
-        @test bounds[1,2] - bounds[1,1] == 364  # One year minus one day
+        # With a noleap calendar and contiguous yearly bounds, width should be 365 days
+        @test bounds[1,2] - bounds[1,1] == 365
     end
     
     @testset "Unit standardization" begin

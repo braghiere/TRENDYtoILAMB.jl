@@ -15,7 +15,14 @@ const UNIT_CONVERSIONS = Dict(
 Convert TRENDY units to CF-compliant units.
 """
 function standardize_units(units::String)
-    get(UNIT_CONVERSIONS, units, units)
+    clean = strip(units)
+    # Remove LaTeX-style markers (e.g., kg m$^{-2}$ s$^{-1}$ → kg m-2 s-1)
+    clean = replace(clean, "\$" => "")
+    clean = replace(clean, r"\^\{(-?\d+)\}" => SubstitutionString("\\1"))
+    clean = replace(clean, r"\^(-?\d+)" => SubstitutionString("\\1"))
+    clean = replace(clean, r"\s+" => " ") # Collapse repeated spaces
+    clean = strip(clean)
+    get(UNIT_CONVERSIONS, clean, clean)
 end
 
 """

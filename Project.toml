@@ -8,8 +8,8 @@ NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [compat]
-julia = "1.9"
-NCDatasets = "0.12"
+julia = "1.9, 1.10"
+NCDatasets = "0.12, 0.13, 0.14"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
