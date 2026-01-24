@@ -1,6 +1,39 @@
 # Module-level constants for time calculations
 const DAYS_PER_MONTH_APPROX = 365.0 / 12.0  # ~30.4167 days per month (365/12)
 
+# Days per month for noleap calendar (no Feb 29)
+const DAYS_PER_MONTH_NOLEAP = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+"""
+    days_since_1850_for_month_start(year::Int, month::Int)
+
+Calculate days since 1850-01-01 for the start of a given month (noleap calendar).
+"""
+function days_since_1850_for_month_start(year::Int, month::Int)
+    # Days from 1850 to start of year
+    days = (year - 1850) * 365
+    # Add days for months before this one
+    for m in 1:(month-1)
+        days += DAYS_PER_MONTH_NOLEAP[m]
+    end
+    return days
+end
+
+"""
+    days_since_1850_for_month_end(year::Int, month::Int)
+
+Calculate days since 1850-01-01 for the end of a given month (noleap calendar).
+Returns the start of the next month (exclusive end bound), following CF conventions.
+"""
+function days_since_1850_for_month_end(year::Int, month::Int)
+    # End bound is the start of the next month (exclusive)
+    if month == 12
+        return days_since_1850_for_month_start(year + 1, 1)
+    else
+        return days_since_1850_for_month_start(year, month + 1)
+    end
+end
+
 """
     parse_units(time_units::String)
 
@@ -21,8 +54,8 @@ function parse_units(time_units::String)
     
     # Extract year from the reference date
     year_patterns = [
-        r"(?:years|months|days|yr) since (\d+)", # Basic year
-        r"(?:years|months|days|yr) since (\d{4})-\d{1,2}-\d{1,2}", # ISO date format
+        r"(?:years|months|days|hours|yr) since (\d+)", # Basic year
+        r"(?:years|months|days|hours|yr) since (\d{4})-\d{1,2}-\d{1,2}", # ISO date format
     ]
     
     for pattern in year_patterns
@@ -38,28 +71,102 @@ end
 """
     convert_time_to_days(times::Vector{<:Any}, reference_year::Int=1850)
 
-Convert time values to days since a reference date.
+Convert time values to days since 1850-01-01 (noleap calendar).
 Handles both DateTime objects and numeric year values.
+For monthly data, returns the mid-month day value.
 """
-function convert_time_to_days(times::Vector{<:Any}, reference_year::Int=1850)
-    days = Vector{Int}(undef, length(times))
-    
+function convert_time_to_days(times::Vector{<:Any}, reference_year::Int=1850; time_units::Union{Nothing,String}=nothing, calendar::String="noleap")
+    days = Vector{Float64}(undef, length(times))
+
+    # Detect base unit if provided (days/months/years/hours)
+    base_unit::Symbol = :years
+    if time_units !== nothing
+        units_lower = lowercase(time_units)
+        if occursin("days since", units_lower)
+            base_unit = :days
+        elseif occursin("hours since", units_lower)
+            base_unit = :hours
+        elseif occursin("months since", units_lower)
+            base_unit = :months
+        elseif occursin("years since", units_lower) || occursin("yr since", units_lower)
+            base_unit = :years
+        end
+    end
+
     for (i, t) in enumerate(times)
         if t isa AbstractFloat || t isa Integer
-            # Handle numeric year values
-            # t represents years since reference_year, so absolute year is reference_year + t
-            # Then convert to days since 1850
-            absolute_year = reference_year + t
-            days[i] = floor(Int, (absolute_year - 1850) * 365)
-        elseif t isa NCDatasets.DateTimeNoLeap || t isa Dates.AbstractDateTime
-            # For NCDatasets datetime types, just compute the offset in years and days
-            days[i] = (Dates.year(t) - 1850) * 365 + (Dates.dayofyear(t) - 1)
+            # Numeric value: interpret according to units
+            if base_unit == :days
+                offset_days = float(t)
+                days[i] = offset_days + (reference_year - 1850) * 365
+            elseif base_unit == :hours
+                offset_days = float(t) / 24
+                days[i] = offset_days + (reference_year - 1850) * 365
+            elseif base_unit == :months
+                month_index = round(Int, t)
+                year = reference_year + div(month_index, 12)
+                month = (month_index % 12) + 1
+                start_day = days_since_1850_for_month_start(year, month)
+                days_in_month = DAYS_PER_MONTH_NOLEAP[month]
+                days[i] = start_day + days_in_month / 2
+            else
+                # Treat as years since reference_year
+                absolute_year = reference_year + float(t)
+                days[i] = (absolute_year - 1850) * 365
+            end
+        elseif t isa NCDatasets.CFTime.AbstractCFDateTime || t isa Dates.AbstractDateTime
+            # For NCDatasets/CFTime datetime types (DateTimeNoLeap, DateTime360Day, etc.)
+            # Compute proper mid-month time value for noleap calendar
+            year = Dates.year(t)
+            month = Dates.month(t)
+
+            # Get the start of the month and add half the month's days
+            month_start = days_since_1850_for_month_start(year, month)
+            days_in_month = DAYS_PER_MONTH_NOLEAP[month]
+            # Use floor to get integer mid-month day (matching FLUXCOM convention)
+            days[i] = month_start + div(days_in_month, 2)
         else
             error("Unsupported time type: $(typeof(t))")
         end
     end
-    
+
     return days
+end
+
+"""
+    continuous_bounds_from_time(days::Vector{<:Real})
+
+Create contiguous time bounds given time coordinate centers (days since 1850).
+Bounds are midpoints between adjacent times, with first/last extrapolated.
+Returns Array{Float64,2} of size (n_times, 2).
+"""
+function continuous_bounds_from_time(days::Vector{<:Real})
+    n = length(days)
+    bounds = zeros(Float64, n, 2)
+
+    if n == 1
+        half_width = 15.5  # rough half-month for single point
+        bounds[1, 1] = days[1] - half_width
+        bounds[1, 2] = days[1] + half_width
+        return bounds
+    end
+
+    for i in 1:n
+        if i == 1
+            half_span = (days[2] - days[1]) / 2
+            bounds[i, 1] = days[1] - half_span
+            bounds[i, 2] = days[1] + half_span
+        elseif i == n
+            half_span = (days[n] - days[n-1]) / 2
+            bounds[i, 1] = days[i] - half_span
+            bounds[i, 2] = days[i] + half_span
+        else
+            bounds[i, 1] = (days[i-1] + days[i]) / 2
+            bounds[i, 2] = (days[i] + days[i+1]) / 2
+        end
+    end
+
+    return bounds
 end
 
 """
@@ -71,35 +178,8 @@ For yearly data (when consecutive values differ by ~1), creates yearly bounds.
 For monthly data (when consecutive values differ by ~1/12), creates monthly bounds.
 """
 function create_time_bounds(years::Vector{<:Real}, reference_year::Int=1850)
-    n_years = length(years)
-    bounds = zeros(Float64, n_years, 2)
-    
-    # Detect if this is yearly or monthly data
-    is_yearly = false
-    if n_years > 1
-        # Check the difference between first two points
-        diff = years[2] - years[1]
-        is_yearly = diff >= 0.9  # If difference is close to 1 year or more
-    else
-        # Single point - assume yearly
-        is_yearly = true
-    end
-    
-    if is_yearly
-        # Yearly data: bounds span from Jan 1 to Dec 31 (364 days for noleap)
-        for (i, year) in enumerate(years)
-            bounds[i, 1] = convert_time_to_days([year], reference_year)[1]
-            bounds[i, 2] = convert_time_to_days([year + 1], reference_year)[1] - 1
-        end
-    else
-        # Monthly data: bounds span one month
-        for (i, year) in enumerate(years)
-            bounds[i, 1] = convert_time_to_days([year], reference_year)[1]
-            bounds[i, 2] = convert_time_to_days([year + 1/12], reference_year)[1] - 1
-        end
-    end
-    
-    return bounds
+    days = convert_time_to_days(years, reference_year; time_units="years since $(reference_year)-01-01")
+    return continuous_bounds_from_time(days)
 end
 
 """
@@ -108,40 +188,24 @@ end
 Create time bounds array for ILAMB format from DateTime objects.
 Handles NCDatasets.DateTimeNoLeap and other datetime types.
 Returns an Array{Float64,2} with dimensions (n_times, 2) containing start and end days.
+Uses proper calendar month boundaries for noleap calendar.
 """
 function create_time_bounds(datetimes::Vector, reference_year::Int=1850)
     # Check if we have DateTime-like objects (not numeric)
     if !isempty(datetimes) && !(eltype(datetimes) <: Real)
-        # Convert datetimes to days since reference_year
-        days = convert_time_to_days(datetimes, reference_year)
-        
-        n_times = length(days)
+        n_times = length(datetimes)
         bounds = zeros(Float64, n_times, 2)
-        
+
         for i in 1:n_times
-            if i == 1
-                # For the first time point, estimate the start bound
-                if n_times > 1
-                    dt = (days[2] - days[1]) / 2
-                    bounds[i, 1] = days[i] - dt
-                    bounds[i, 2] = days[i] + dt
-                else
-                    # Only one time point - use ±15 days
-                    bounds[i, 1] = days[i] - 15
-                    bounds[i, 2] = days[i] + 15
-                end
-            elseif i == n_times
-                # For the last time point
-                dt = (days[i] - days[i-1]) / 2
-                bounds[i, 1] = days[i] - dt
-                bounds[i, 2] = days[i] + dt
-            else
-                # For middle points, use midpoints between adjacent times
-                bounds[i, 1] = (days[i-1] + days[i]) / 2
-                bounds[i, 2] = (days[i] + days[i+1]) / 2
-            end
+            dt = datetimes[i]
+            year = Dates.year(dt)
+            month = Dates.month(dt)
+
+            # Use proper calendar month boundaries
+            bounds[i, 1] = days_since_1850_for_month_start(year, month)
+            bounds[i, 2] = days_since_1850_for_month_end(year, month)
         end
-        
+
         return bounds
     else
         # Numeric values - use the existing method
@@ -156,16 +220,45 @@ Create time bounds array for monthly data from days since 1850.
 Returns bounds as a 2 x n_times array (start_days, end_days for each month).
 """
 function create_time_bounds_from_days(days::Vector{Int})
-    n_times = length(days)
-    bounds = zeros(Float64, 2, n_times)
-    
-    # For monthly data, each bound spans approximately 30.4 days (365/12)
-    half_month = DAYS_PER_MONTH_APPROX / 2.0
-    
-    for i in 1:n_times
-        bounds[1, i] = days[i] - half_month
-        bounds[2, i] = days[i] + half_month
+    return continuous_bounds_from_time(days)
+end
+
+"""
+    yearmonth_index_to_days(time_values::Vector{<:Real})
+
+Treat numeric time values as contiguous month indices (1 → Jan of reference year 0).
+Returns a tuple `(days, time_bounds)` where `days` are mid-month days since 1850-01-01
+and `time_bounds` has shape (n, 2) with start/end days.
+"""
+function yearmonth_index_to_days(time_values::Vector{<:Real})
+    n_months = length(time_values)
+    days = zeros(Float64, n_months)
+    time_bounds = zeros(Float64, n_months, 2)
+    for i in 1:n_months
+        v = round(Int, time_values[i])
+        y = div(v, 12)
+        m = v - y * 12
+        if m == 0
+            y -= 1
+            m = 12
+        end
+        sday = days_since_1850_for_month_start(y, m)
+        eday = days_since_1850_for_month_end(y, m)
+        days[i] = sday + (eday - sday) / 2
+        time_bounds[i, 1] = sday
+        time_bounds[i, 2] = eday
     end
-    
-    return bounds
+    return days, time_bounds
+end
+
+"""
+    days_to_year_month(day::Real)
+
+Approximate conversion from days since 1850-01-01 to (year, month) in a noleap calendar.
+"""
+function days_to_year_month(day::Real)
+    year = 1850 + floor(Int, day / 365)
+    day_in_year = day - (year - 1850) * 365
+    month = max(1, min(12, ceil(Int, (day_in_year / 365) * 12)))
+    return year, month
 end
