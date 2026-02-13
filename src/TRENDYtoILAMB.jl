@@ -2,6 +2,7 @@ module TRENDYtoILAMB
 
 using NCDatasets
 using Dates
+using Statistics
 
 # Export main functionality
 export TRENDYDataset, ILAMBDataset

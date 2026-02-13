@@ -81,9 +81,9 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
     for model in models
         println("\nProcessing model: $model")
         model_dir = joinpath(trendy_dir, model)
-        
-        # Process each simulation type (S0-S3)
-        for sim in ["S0", "S1", "S2", "S3"]
+
+        # Process only S3 simulation (historical + all forcings)
+        for sim in ["S3"]
             sim_dir = joinpath(model_dir, sim)
             
             # Skip if simulation directory doesn't exist
@@ -114,6 +114,13 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     continue
                 end
                 
+                # Skip if already converted (resume support)
+                existing = filter(x -> startswith(x, "$(var)_Lmon_ENSEMBLE-$(model)_"), readdir(output_dir))
+                if !isempty(existing)
+                    push!(skipped_files, joinpath(model, sim, file) * " (already converted)")
+                    continue
+                end
+
                 total_files += 1
                 input_file = joinpath(sim_dir, file)
                 println("  Converting $file (ILAMB variable: $var)...")
@@ -256,7 +263,7 @@ end
 
 # Path to TRENDY data
 const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_ready"
+const OUTPUT_DIR = "/home/renatob/data/ilamb_test_output_full"
 
 # Create output directory if it doesn't exist
 mkpath(OUTPUT_DIR)
