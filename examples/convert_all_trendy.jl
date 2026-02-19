@@ -106,7 +106,7 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     continue
                 end
                 
-                var = parts[end][1:end-3]  # Remove .nc extension
+                var = String(parts[end][1:end-3])  # Remove .nc extension, convert to String
                 
                 # Skip if not an ILAMB variable
                 if !(lowercase(var) in lowercase.(ilamb_vars))

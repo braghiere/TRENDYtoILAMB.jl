@@ -329,13 +329,13 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         # Build output attributes - preserve _FillValue if it exists in source
         out_attribs = Dict{String, Any}(
             "units" => units,
-            "long_name" => get(var_atts, "long_name", dataset.variable)
+            "long_name" => get(var_atts, "long_name", normalized_var)
         )
         if haskey(var_atts, "_FillValue")
             out_attribs["_FillValue"] = var_atts["_FillValue"]
         end
 
-        defVar(ds_out, dataset.variable, var_data, output_dims,
+        defVar(ds_out, normalized_var, var_data, output_dims,
                attrib = out_attribs)
         
     finally
@@ -345,7 +345,7 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     
     return ILAMBDataset(
         output_file,
-        dataset.variable,
+        normalized_var,
         units,
         "days since 1850-01-01",
         "noleap"
