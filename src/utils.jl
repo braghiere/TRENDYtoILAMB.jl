@@ -2,26 +2,80 @@
 const UNIT_CONVERSIONS = Dict(
     "gC/m^2" => "kg m-2",
     "gC/m2" => "kg m-2",
-    "mm/yr" => "kg m-2 s-1",
-    "mm/year" => "kg m-2 s-1",
     "gC m-2" => "kg m-2",
     "gC m-2 yr-1" => "kg m-2 s-1",
-    "kgC m-2" => "kg m-2"
+    "mm/yr" => "kg m-2 s-1",
+    "mm/year" => "kg m-2 s-1",
+    # Standard formats with slashes
+    "kg/m2" => "kg m-2",
+    "kgC/m2" => "kg m-2",
+    "kg/m2/s" => "kg m-2 s-1",
+    "kg/m2/s" => "kg m-2 s-1",
+    # Capital K variations 
+    "Kg/m2/s" => "kg m-2 s-1",
+    "KgC/m2" => "kg m-2",
+    # Dot-separated (CARDAMOM style)
+    "kg.m-2" => "kg m-2",
+    "kg.m-2.s-1" => "kg m-2 s-1",
+    "m2.m-2" => "m2 m-2",
+    # Space-separated with C
+    "kgC m-2" => "kg m-2",
+    "kg m-2 s-1" => "kg m-2 s-1",  # Already correct
+    # Special cases
+    "fraction" => "1",
+    "1" => "1"
 )
 
 """
-    standardize_units(units::String)
+    standardize_units(units)
 
 Convert TRENDY units to CF-compliant units.
+Handles LaTeX formatting, dots, slashes, extra spaces, and Unicode issues.
+Non-string values (e.g., NaN stored as Float64) return empty string.
 """
-function standardize_units(units::String)
+function standardize_units(units)
+    # Handle non-string units (some files store NaN or numeric values as units)
+    units isa AbstractString || return ""
+
     clean = strip(units)
+    
+    # Remove invisible Unicode characters (zero-width spaces, etc.)
+    clean = replace(clean, r"[\u200B-\u200D\uFEFF]" => "")
+    
     # Remove LaTeX-style markers (e.g., kg m$^{-2}$ s$^{-1}$ → kg m-2 s-1)
+    # First remove $ markers
     clean = replace(clean, "\$" => "")
-    clean = replace(clean, r"\^\{(-?\d+)\}" => SubstitutionString("\\1"))
-    clean = replace(clean, r"\^(-?\d+)" => SubstitutionString("\\1"))
-    clean = replace(clean, r"\s+" => " ") # Collapse repeated spaces
+    # Then handle ^{-2} style exponents
+    while (m = match(r"\^\{(-?\d+)\}", clean)) !== nothing
+        clean = replace(clean, r"\^\{(-?\d+)\}" => m.captures[1], count=1)
+    end
+    # Handle ^-2 style exponents (no braces)
+    while (m = match(r"\^(-?\d+)", clean)) !== nothing
+        clean = replace(clean, r"\^(-?\d+)" => m.captures[1], count=1)
+    end
+    
+    # Replace dots with spaces (CARDAMOM style: kg.m-2.s-1 → kg m-2 s-1)
+    clean = replace(clean, r"\.(?=[a-zA-Z])" => " ")
+    
+    # Replace slashes with spaces and convert exponents (kg/m2/s → kg m-2 s-1)
+    while (m = match(r"/m(\d+)", clean)) !== nothing
+        clean = replace(clean, r"/m(\d+)" => " m-$(m.captures[1])", count=1)
+    end
+    clean = replace(clean, r"/s\b" => " s-1")
+    
+    # Fix lone "s" at end of flux units (kg m-2 s → kg m-2 s-1)
+    # This handles CARDAMOM's kg.m-2.s format
+    clean = replace(clean, r"\bs\s*$" => "s-1")
+    
+    # Normalize case: kgC → kg, Kg → kg
+    clean = replace(clean, r"\bKgC\b" => "kg")
+    clean = replace(clean, r"\bKg\b" => "kg")
+    
+    # Collapse repeated spaces
+    clean = replace(clean, r"\s+" => " ")
     clean = strip(clean)
+    
+    # Apply dictionary conversions
     get(UNIT_CONVERSIONS, clean, clean)
 end
 

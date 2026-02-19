@@ -155,7 +155,9 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     
     # Create ILAMB-compliant filename
     # Format: {variable}_Lmon_ENSEMBLE-{model}_historical_r1i1p1f1_gn_{start_date}-{end_date}.nc
-    filename = "$(dataset.variable)_Lmon_ENSEMBLE-$(dataset.model)_historical_r1i1p1f1_gn_$(start_date)-$(end_date).nc"
+    # Normalize variable case to match ILAMB expectations (e.g., LAI → lai, csoil → cSoil)
+    normalized_var = normalize_variable_case(dataset.variable)
+    filename = "$(normalized_var)_Lmon_ENSEMBLE-$(dataset.model)_historical_r1i1p1f1_gn_$(start_date)-$(end_date).nc"
     
     # Output directly in model directory (no S3 subdirectory)
     output_file = joinpath(output_dir, filename)
@@ -178,10 +180,16 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         var_atts = ds_in[dataset.variable].attrib
         meta = get_variable_metadata(dataset.variable)
         raw_units = get(var_atts, "units", nothing)
-        raw_units = something(raw_units, get(var_atts, "unit", meta.units))
+        # Fall back to "unit" attribute if "units" is missing or non-string (e.g., NaN)
+        if raw_units === nothing || !(raw_units isa AbstractString)
+            raw_units = get(var_atts, "unit", meta.units)
+        end
+        if raw_units === nothing || !(raw_units isa AbstractString)
+            raw_units = meta.units
+        end
         units = standardize_units(raw_units)
         # If sanitization produces something obviously wrong, fall back to mapped metadata units
-        if units == raw_units || occursin(r"m1", units) || occursin(r"m\\$1", raw_units)
+        if isempty(units) || units == raw_units || occursin(r"m1", units) || occursin(r"m\$1", raw_units)
             units = meta.units
         end
         @info "Variable metadata" variable=dataset.variable units=units
@@ -295,6 +303,16 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             inds = Base.setindex(inds, time_indices, time_idx)
             var_data = var_data[inds...]
         end
+        
+        # Apply unit conversions to data values if needed
+        @info "Checking for unit conversions" raw_units=raw_units target_units=units
+        var_data = convert_data_values(var_data, raw_units, units, dataset.variable)
+        
+        # Special handling for precipitation mm → kg m-2 s-1
+        if dataset.variable == "pr" && occursin("mm", lowercase(raw_units))
+            var_data = convert_precipitation_values(var_data, raw_units, "monthly")
+        end
+        
         @info "Creating main variable" variable=dataset.variable size=size(var_data)
 
         # Map input dimension names to output dimension names
@@ -308,11 +326,17 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         )
         output_dims = Tuple(get(dim_name_map, d, d) for d in input_dims)
 
+        # Build output attributes - preserve _FillValue if it exists in source
+        out_attribs = Dict{String, Any}(
+            "units" => units,
+            "long_name" => get(var_atts, "long_name", dataset.variable)
+        )
+        if haskey(var_atts, "_FillValue")
+            out_attribs["_FillValue"] = var_atts["_FillValue"]
+        end
+
         defVar(ds_out, dataset.variable, var_data, output_dims,
-               attrib = Dict(
-                   "units" => units,
-                   "long_name" => get(var_atts, "long_name", dataset.variable)
-               ))
+               attrib = out_attribs)
         
     finally
         close(ds_in)

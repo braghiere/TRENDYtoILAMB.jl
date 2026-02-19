@@ -115,7 +115,9 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                 end
                 
                 # Skip if already converted (resume support)
-                existing = filter(x -> startswith(x, "$(var)_Lmon_ENSEMBLE-$(model)_"), readdir(output_dir))
+                # Use ILAMB-normalized case for variable names (e.g., LAI → lai, csoil → cSoil)
+                normalized_var = normalize_variable_case(var)
+                existing = filter(x -> startswith(x, "$(normalized_var)_Lmon_ENSEMBLE-$(model)_"), readdir(output_dir))
                 if !isempty(existing)
                     push!(skipped_files, joinpath(model, sim, file) * " (already converted)")
                     continue

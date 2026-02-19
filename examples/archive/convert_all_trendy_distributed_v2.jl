@@ -78,7 +78,7 @@ end
 println("📊 Collecting files to convert...")
 
 const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_ready"
+const OUTPUT_DIR = "/home/renatob/data/ilamb_test_output_full"
 
 # ILAMB variables
 const ILAMB_VARS = [
