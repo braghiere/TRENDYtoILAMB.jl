@@ -153,7 +153,14 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     )
                     
                     println("    🔄 Converting to ILAMB format...")
-                    ilamb_dataset = convert_to_ilamb(dataset, output_dir=output_dir)
+                    # Use standardized date range for ALL TRENDY files to ensure ILAMB pattern matching works
+                    # ILAMB searches for files with consistent date patterns - if different variables
+                    # have different date ranges in filenames, ILAMB won't find them all.
+                    # The actual data coverage in each file remains authentic (may have gaps).
+                    ilamb_dataset = convert_to_ilamb(dataset, 
+                                                    output_dir=output_dir,
+                                                    override_start_date="170001",
+                                                    override_end_date="202312")
                     
                     # Get output file size
                     output_file = ilamb_dataset.path

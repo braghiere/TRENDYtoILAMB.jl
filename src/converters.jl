@@ -1,12 +1,21 @@
 """
-    convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
+    convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", override_start_date::Union{String,Nothing}=nothing, override_end_date::Union{String,Nothing}=nothing)
 
 Convert a TRENDY dataset to ILAMB format.
 
 Output filename format: {variable}_Lmon_{model}_historical_{simulation}_gn_{start_date}-{end_date}.nc
 Example: gpp_Lmon_CARDAMOM_historical_S3_gn_200101-202112.nc
+
+Arguments:
+- dataset: TRENDYDataset to convert
+- output_dir: Directory to write output files  
+- override_start_date: Optional fixed start date (YYYYMM format) for filename standardization
+- override_end_date: Optional fixed end date (YYYYMM format) for filename standardization
+
+Note: override dates are used ONLY in filenames to ensure ILAMB pattern matching works.
+The actual time values in the file reflect the true data coverage.
 """
-function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
+function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", override_start_date::Union{String,Nothing}=nothing, override_end_date::Union{String,Nothing}=nothing)
     # Open input dataset
     ds_in = Dataset(dataset.path)
     
@@ -19,9 +28,12 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     has_time_units = time_units_attr !== nothing
     time_units = something(time_units_attr, "days since 1850-01-01")
     calendar_attr = get(ds_in["time"].attrib, "calendar", "noleap")
-    # Special case: ISAM-style encoded months do not follow CF time units
+    # Special cases: ISAM-style encoded times do not follow CF time units
     is_yearmonth_encoded = occursin("month as %Y%m", time_units)
-    reference_year = is_yearmonth_encoded ? 0 : parse_units(time_units)
+    is_year_encoded = occursin("year as %Y", time_units)
+    is_yearday_encoded = occursin("day as %Y%m%d", time_units)
+    is_encoded_time = is_yearmonth_encoded || is_year_encoded || is_yearday_encoded
+    reference_year = is_encoded_time ? 0 : parse_units(time_units)
 
     # Read time values with a robust fallback if CF decoding fails
     time_values = nothing
@@ -65,6 +77,69 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         end_year, end_month = days_to_year_month(time_bounds[end, 2] - 1)
         start_date = string(start_year) * lpad(start_month, 2, '0')
         end_date = string(end_year) * lpad(end_month, 2, '0')
+    elseif is_year_encoded
+        # Values are years (e.g., ISAM "year as %Y.%f": 1700, 1701, ..., 2023)
+        # Annual data — create one time step per year with Jan 1 to Jan 1 bounds
+        n = length(time_values)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        for i in 1:n
+            year = round(Int, time_values[i])
+            start_day = days_since_1850_for_month_start(year, 1)
+            end_day = days_since_1850_for_month_start(year + 1, 1)
+            days[i] = start_day + (end_day - start_day) / 2
+            time_bounds[i, 1] = start_day
+            time_bounds[i, 2] = end_day
+        end
+        start_year = round(Int, time_values[1])
+        end_year = round(Int, time_values[end])
+        start_date = string(start_year) * "01"
+        end_date = string(end_year) * "12"
+        @info "Year-encoded time" n_years=n start_year=start_year end_year=end_year
+    elseif is_yearday_encoded
+        # Values encoded as YYYYMMDD (e.g., ISAM "day as %Y%m%d.%f")
+        # Some files have broken (all-zero) time values — generate synthetic monthly time
+        n = length(time_values)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        if all(v -> v == 0 || isnan(v), time_values)
+            # Broken time — assume TRENDY standard 1700–2023 monthly data
+            @warn "Time values are all zero with '$time_units' encoding; generating synthetic monthly time from 1700" n_timesteps=n
+            start_year_val = 1700
+            for i in 1:n
+                month_offset = i - 1
+                y = start_year_val + div(month_offset, 12)
+                m = (month_offset % 12) + 1
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+            start_date = string(start_year_val) * "01"
+            n_total_months = n
+            end_year_val = start_year_val + div(n_total_months - 1, 12)
+            end_month_val = ((n_total_months - 1) % 12) + 1
+            end_date = string(end_year_val) * lpad(end_month_val, 2, '0')
+        else
+            # Parse YYYYMMDD-encoded values as monthly midpoints
+            for i in 1:n
+                v = round(Int, time_values[i])
+                y = div(v, 10000)
+                m = div(v % 10000, 100)
+                m = max(1, min(12, m))
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+            first_v = round(Int, time_values[1])
+            last_v = round(Int, time_values[end])
+            start_date = string(div(first_v, 10000)) * lpad(div(first_v % 10000, 100), 2, '0')
+            end_date = string(div(last_v, 10000)) * lpad(div(last_v % 10000, 100), 2, '0')
+        end
+        @info "Day-encoded time" n_timesteps=n start_date=start_date end_date=end_date
     elseif is_month_index && dataset.model == "CARDAMOM"
         # CARDAMOM: Time values are month indices starting from 1
         # CARDAMOM data starts in January 2003
@@ -87,21 +162,43 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             time_bounds[i, 2] = end_day
         end
     elseif decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || decoded_times[1] isa Dates.AbstractDateTime)
-        # CFTime/DateTime: build bounds by stepping monthly from the first year/month to ensure contiguity
+        # CFTime/DateTime: detect annual vs monthly resolution, then build bounds accordingly
         n = length(decoded_times)
         days = zeros(Float64, n)
         time_bounds = zeros(Float64, n, 2)
         y0 = Dates.year(decoded_times[1])
         m0 = Dates.month(decoded_times[1])
-        for i in 1:n
-            month_idx = (m0 - 1) + (i - 1)
-            y = y0 + div(month_idx, 12)
-            m = (month_idx % 12) + 1
-            sday = days_since_1850_for_month_start(y, m)
-            eday = days_since_1850_for_month_end(y, m)
-            days[i] = sday + (eday - sday) / 2
-            time_bounds[i, 1] = sday
-            time_bounds[i, 2] = eday
+
+        # Detect temporal resolution: if the year advances between first two timesteps, it's annual
+        is_annual_data = false
+        if n >= 2
+            y1 = Dates.year(decoded_times[2])
+            is_annual_data = (y1 - y0) >= 1
+        end
+
+        if is_annual_data
+            # Annual data: one time step per year, bounds span full year
+            @info "Detected annual data from CFTime" n_years=n first_year=y0
+            for i in 1:n
+                y = Dates.year(decoded_times[i])
+                sday = days_since_1850_for_month_start(y, 1)
+                eday = days_since_1850_for_month_start(y + 1, 1)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+        else
+            # Monthly data: step month by month from first year/month to ensure contiguity
+            for i in 1:n
+                month_idx = (m0 - 1) + (i - 1)
+                y = y0 + div(month_idx, 12)
+                m = (month_idx % 12) + 1
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
         end
     elseif occursin("months since", lowercase(time_units))
         # Numeric months since a reference date; assume monthly cadence starting from the first value
@@ -151,6 +248,15 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         end
         start_date = string(start_year) * lpad(start_month, 2, '0')
         end_date = string(end_year) * lpad(end_month, 2, '0')
+    end
+    
+    # Override dates if provided (for filename standardization across model files)
+    # This ensures ILAMB's pattern matching works even when variables have different temporal coverage
+    if override_start_date !== nothing
+        start_date = override_start_date
+    end
+    if override_end_date !== nothing
+        end_date = override_end_date
     end
     
     # Create ILAMB-compliant filename

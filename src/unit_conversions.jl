@@ -24,7 +24,7 @@ Convert data values from one unit to another.
 - Precipitation: mm → kg m-2 s-1 (requires time context, handled separately)
 - Radiation: W m-2 → W m-2 (no conversion)
 """
-function convert_data_values(data::Array, from_units::String, to_units::String, variable::String)
+function convert_data_values(data::Array, from_units::AbstractString, to_units::AbstractString, variable::AbstractString)
     # Normalize unit strings for comparison
     from_clean = strip(lowercase(from_units))
     to_clean = strip(lowercase(to_units))
@@ -96,7 +96,7 @@ Convert precipitation from mm (accumulated) to kg m-2 s-1 (flux).
 - Daily: divide by 86400 seconds
 - Yearly: divide by ~3.154e7 seconds (365.25 days)
 """
-function convert_precipitation_values(data::Array, from_units::String, time_interval::String)
+function convert_precipitation_values(data::Array, from_units::AbstractString, time_interval::AbstractString)
     from_clean = strip(lowercase(from_units))
     
     if !occursin("mm", from_clean)
