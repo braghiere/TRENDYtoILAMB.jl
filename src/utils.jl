@@ -139,9 +139,12 @@ function verify_conversion(dataset::TRENDYDataset, ilamb_dataset::ILAMBDataset)
         
         # Handle missing values and NaN in comparison
         if size(data_orig) == size(data_ilamb)
-            # Compare only valid (non-missing, non-NaN) values
-            mask_orig = .!ismissing.(data_orig) .& .!isnan.(Float64.(data_orig))
-            mask_ilamb = .!ismissing.(data_ilamb) .& .!isnan.(Float64.(data_ilamb))
+            # Compare only valid (non-missing, non-NaN) values.
+            # Note: build the mask element-wise so `missing` is never passed to
+            # Float64/isnan (which would throw); `.&` is not short-circuiting.
+            isvalid(v) = !ismissing(v) && !(v isa AbstractFloat && isnan(v))
+            mask_orig = isvalid.(data_orig)
+            mask_ilamb = isvalid.(data_ilamb)
 
             if all(mask_orig .== mask_ilamb)
                 # Same missing pattern

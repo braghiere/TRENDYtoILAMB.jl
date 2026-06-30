@@ -82,8 +82,8 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
         println("\nProcessing model: $model")
         model_dir = joinpath(trendy_dir, model)
 
-        # Process only S3 simulation (historical + all forcings)
-        for sim in ["S3"]
+        # Process only S2 simulation (historical CO2 + climate, fixed land use)
+        for sim in ["S2"]
             sim_dir = joinpath(model_dir, sim)
             
             # Skip if simulation directory doesn't exist
@@ -160,7 +160,7 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     ilamb_dataset = convert_to_ilamb(dataset, 
                                                     output_dir=output_dir,
                                                     override_start_date="170001",
-                                                    override_end_date="202312")
+                                                    override_end_date="202412")
                     
                     # Get output file size
                     output_file = ilamb_dataset.path
@@ -271,8 +271,8 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
 end
 
 # Path to TRENDY data
-const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_test_output_full"
+const TRENDY_DIR = "/kiwi-data/Data/model/TRENDYv14/S2"
+const OUTPUT_DIR = "/home/renatob/data/ilamb_output_v14_S2"
 
 # Create output directory if it doesn't exist
 mkpath(OUTPUT_DIR)

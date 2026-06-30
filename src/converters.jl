@@ -225,27 +225,15 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
     # No benchmark-dependent trimming; ensure time_bounds/time are contiguous and match data length
     time_indices_used = collect(1:length(time_values))
 
-    # Calculate start and end dates if not set yet
+    # Calculate start and end dates if not set yet.
+    # Derive them from the authoritative rebuilt time axis (time_bounds, in days
+    # since 1850) rather than from raw decoded_times: for non-CF encodings such as
+    # "months since", CFTime approximates a month as ~30.44 days, so its endpoints
+    # drift by several months over a multi-century record (e.g. CABLE-POP showed
+    # 2025-03 in the filename while the real last month is 2024-12).
     if isempty(start_date)
-        if decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || 
-                                      decoded_times[1] isa Dates.AbstractDateTime)
-            start_year = Dates.year(decoded_times[1])
-            start_month = Dates.month(decoded_times[1])
-            end_year = Dates.year(decoded_times[end])
-            end_month = Dates.month(decoded_times[end])
-        else
-            start_days_since_1850 = days[1]
-            start_years_from_1850 = start_days_since_1850 / 365.0
-            start_year = 1850 + floor(Int, start_years_from_1850)
-            start_day_in_year = start_days_since_1850 - (start_year - 1850) * 365.0
-            start_month = max(1, min(12, ceil(Int, (start_day_in_year / 365.0) * 12)))
-            
-            end_days_since_1850 = days[end]
-            end_years_from_1850 = end_days_since_1850 / 365.0
-            end_year = 1850 + floor(Int, end_years_from_1850)
-            end_day_in_year = end_days_since_1850 - (end_year - 1850) * 365.0
-            end_month = max(1, min(12, ceil(Int, (end_day_in_year / 365.0) * 12)))
-        end
+        start_year, start_month = days_to_year_month(time_bounds[1, 1])
+        end_year, end_month = days_to_year_month(time_bounds[end, 2] - 1)
         start_date = string(start_year) * lpad(start_month, 2, '0')
         end_date = string(end_year) * lpad(end_month, 2, '0')
     end
@@ -297,6 +285,13 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
         # If sanitization produces something obviously wrong, fall back to mapped metadata units
         if isempty(units) || units == raw_units || occursin(r"m1", units) || occursin(r"m\$1", raw_units)
             units = meta.units
+        end
+        # Safety net: never emit "unknown". If the variable has no registry mapping,
+        # preserve the (standardized) source units so files stay CF-usable
+        # (e.g. JSBACH hfls is "W m-2" at the source).
+        if isempty(units) || units == "unknown"
+            su = standardize_units(raw_units)
+            units = (isempty(su) || su == "unknown") ? raw_units : su
         end
         @info "Variable metadata" variable=dataset.variable units=units
         
@@ -362,18 +357,15 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
                    "bounds" => "time_bounds"
                ))
         
-        # Define time bounds variable
+        # Define time bounds variable.
+        # NCDatasets REVERSES dimension order on write (verified empirically:
+        # passing a Julia (n,2) array with dims ("time","nb") yields file tb(nb,time)).
+        # CF requires time_bounds(time, nb) in the FILE, so pass a (2, n_times) array
+        # with dims ("nb", "time"); NCDatasets reverses it to the CF (time, nb) layout.
         @info "Creating time_bounds variable" size=size(time_bounds)
-        # CF convention expects time_bounds(time, nb) in the file.
-        # NCDatasets uses Julia's column-major ordering, so:
-        # - Julia array shape (n_times, 2) with dims ("time", "nb") -> file has (nb, time)
-        # - Julia array shape (2, n_times) with dims ("nb", "time") -> file has (time, nb) ✓
-        # We need the second form for CF compliance.
         if size(time_bounds, 2) == 2  # Shape is (n_times, 2)
-            # Transpose to (2, n_times) and use dims ("nb", "time") for correct file layout
             defVar(ds_out, "time_bounds", permutedims(time_bounds, (2, 1)), ("nb", "time"))
         elseif size(time_bounds, 1) == 2  # Shape is (2, n_times)
-            # Already in correct shape, use dims ("nb", "time")
             defVar(ds_out, "time_bounds", time_bounds, ("nb", "time"))
         else
             error("Unexpected time_bounds shape: $(size(time_bounds))")
@@ -441,8 +433,12 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
             out_attribs["_FillValue"] = var_atts["_FillValue"]
         end
 
+        # Write the main variable with zlib compression (shuffle + deflate).
+        # TRENDY inputs are deflated; without this the ILAMB copies balloon ~5x
+        # (e.g. a 0.5deg gpp file goes 0.77 GB -> 4 GB).
         defVar(ds_out, normalized_var, var_data, output_dims,
-               attrib = out_attribs)
+               attrib = out_attribs,
+               shuffle = true, deflatelevel = 4)
         
     finally
         close(ds_in)

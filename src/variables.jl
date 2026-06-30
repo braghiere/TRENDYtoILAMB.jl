@@ -114,6 +114,48 @@ const VARIABLE_MAPPINGS = Dict(
         units = "W m-2",
         standard_name = "surface_downwelling_shortwave_flux_in_air"
     ),
+    "rlds" => (
+        name = "rlds",
+        long_name = "Surface Downwelling Longwave Radiation",
+        units = "W m-2",
+        standard_name = "surface_downwelling_longwave_flux_in_air"
+    ),
+    "rlus" => (
+        name = "rlus",
+        long_name = "Surface Upwelling Longwave Radiation",
+        units = "W m-2",
+        standard_name = "surface_upwelling_longwave_flux_in_air"
+    ),
+    "rsus" => (
+        name = "rsus",
+        long_name = "Surface Upwelling Shortwave Radiation",
+        units = "W m-2",
+        standard_name = "surface_upwelling_shortwave_flux_in_air"
+    ),
+    "hfls" => (
+        name = "hfls",
+        long_name = "Surface Upward Latent Heat Flux",
+        units = "W m-2",
+        standard_name = "surface_upward_latent_heat_flux"
+    ),
+    "hfss" => (
+        name = "hfss",
+        long_name = "Surface Upward Sensible Heat Flux",
+        units = "W m-2",
+        standard_name = "surface_upward_sensible_heat_flux"
+    ),
+    "evspsbl" => (
+        name = "evspsbl",
+        long_name = "Evaporation Including Sublimation and Transpiration",
+        units = "kg m-2 s-1",
+        standard_name = "water_evapotranspiration_flux"
+    ),
+    "tran" => (
+        name = "tran",
+        long_name = "Transpiration",
+        units = "kg m-2 s-1",
+        standard_name = "transpiration_flux"
+    ),
 )
 
 """

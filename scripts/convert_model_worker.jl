@@ -10,8 +10,13 @@ using NCDatasets
 model = ENV["MODEL"]
 trendy_dir = ENV["TRENDY_DIR"]
 output_dir = ENV["OUTPUT_DIR"]
+# Simulation subdirectory and filename date range are configurable so the same
+# worker serves TRENDY v13/S3 (defaults) and v14/S2.
+sim = get(ENV, "SIM", "S3")
+override_start = get(ENV, "OVERRIDE_START", "170001")
+override_end = get(ENV, "OVERRIDE_END", "202312")
 
-println("Processing model: ", model)
+println("Processing model: ", model, " (sim ", sim, ")")
 println("=" ^ 80)
 
 # ILAMB-relevant variables
@@ -22,11 +27,10 @@ ilamb_vars = [
     "cLitter", "tran"
 ]
 
-# Process only S3 simulation (historical + all forcings)
-sim_dir = joinpath(trendy_dir, model, "S3")
+sim_dir = joinpath(trendy_dir, model, sim)
 
 if !isdir(sim_dir)
-    println("⚠️  S3 directory not found for ", model, ", skipping")
+    println("⚠️  ", sim, " directory not found for ", model, ", skipping")
     exit(0)
 end
 
@@ -89,12 +93,12 @@ for file in nc_files
         end
         
         # Convert with standardized date range
-        dataset = TRENDYDataset(input_file, model, "S3", var)
-        
-        ilamb_dataset = convert_to_ilamb(dataset, 
+        dataset = TRENDYDataset(input_file, model, sim, var)
+
+        ilamb_dataset = convert_to_ilamb(dataset,
                                         output_dir=model_output,
-                                        override_start_date="170001",
-                                        override_end_date="202312")
+                                        override_start_date=override_start,
+                                        override_end_date=override_end)
         
         output_file = ilamb_dataset.path
         file_size = filesize(output_file) / 1024 / 1024  # MB

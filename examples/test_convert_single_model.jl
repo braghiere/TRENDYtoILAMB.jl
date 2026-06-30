@@ -7,9 +7,9 @@ using NCDatasets
 using Printf
 
 # Path to TRENDY data
-const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_ready_test"
-const TEST_MODEL = "CABLE-POP"  # Change this to test different models
+const TRENDY_DIR = "/kiwi-data/Data/model/TRENDYv14/S2"
+const OUTPUT_DIR = "/home/renatob/data/ilamb_ready_test_v14"
+const TEST_MODEL = "CLM-FATES"  # Change this to test different models
 
 # List of variables that ILAMB uses
 ilamb_vars = [
