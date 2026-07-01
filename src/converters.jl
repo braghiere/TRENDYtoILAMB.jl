@@ -53,7 +53,26 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
     # 1. Time units are missing or non-standard, AND
     # 2. Values form consecutive sequence starting from 1
     is_nonstandard_units = !has_time_units || !occursin(r"^(days|months|years|hours) since ", time_units)
-    is_month_index = (length(time_values) > 1 && 
+
+    # Detect bare decimal-year time with no usable CF units, e.g. ELM-FATES stores
+    # 1701.0, 1701.08333, 1701.16667, ... (year + month/12) and no `units` attr.
+    # Without this, the values are misread as "days since 1850" and the whole
+    # record collapses into ~1854. Requires fractional parts and a ~1/12 step.
+    numeric_times = try
+        Float64.(time_values)
+    catch
+        Float64[]
+    end
+    is_decimal_year_monthly = false
+    if is_nonstandard_units && length(numeric_times) > 1 &&
+       all(v -> 1500.0 <= v <= 2200.0, numeric_times) &&
+       any(v -> abs(v - round(v)) > 1e-4, numeric_times)
+        steps = diff(numeric_times)
+        med = sort(steps)[cld(length(steps), 2)]
+        is_decimal_year_monthly = 0.06 < med < 0.12   # ~1/12 year (monthly)
+    end
+
+    is_month_index = (length(time_values) > 1 &&
                      time_values[1] == 1 && 
                      time_values[2] == 2 &&
                      all(diff(time_values) .== 1) &&
@@ -160,6 +179,22 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
             days[i] = start_day + month_len / 2
             time_bounds[i, 1] = start_day
             time_bounds[i, 2] = end_day
+        end
+    elseif is_decimal_year_monthly
+        # Bare decimal-year monthly time (e.g. ELM-FATES): map each value to its
+        # (year, month) and build contiguous monthly bounds.
+        n = length(numeric_times)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        for i in 1:n
+            yv = numeric_times[i]
+            y = floor(Int, yv + 1e-6)
+            m = clamp(round(Int, (yv - y) * 12) + 1, 1, 12)
+            sday = days_since_1850_for_month_start(y, m)
+            eday = days_since_1850_for_month_end(y, m)
+            days[i] = sday + (eday - sday) / 2
+            time_bounds[i, 1] = sday
+            time_bounds[i, 2] = eday
         end
     elseif decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || decoded_times[1] isa Dates.AbstractDateTime)
         # CFTime/DateTime: detect annual vs monthly resolution, then build bounds accordingly
@@ -412,6 +447,17 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", overri
         end
         
         @info "Creating main variable" variable=dataset.variable size=size(var_data)
+
+        # Guard: flag degenerate output (all missing/NaN). A fully-masked variable
+        # is usually a bad/partial write and, once benchmarked, can crash ILAMB's
+        # relationship analysis (empty polyfit). Warn loudly so it isn't shipped silently.
+        let fill = get(var_atts, "_FillValue", nothing),
+            valid = count(x -> !ismissing(x) && !(x isa AbstractFloat && isnan(x)) &&
+                               !(fill isa Number && x == fill), var_data)
+            if valid == 0
+                @warn "Converted variable is entirely fill/NaN — likely a bad conversion" variable=dataset.variable file=output_file
+            end
+        end
 
         # Map input dimension names to output dimension names
         input_dims = dimnames(ds_in[dataset.variable])
