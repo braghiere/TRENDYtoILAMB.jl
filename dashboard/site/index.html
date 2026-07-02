@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TRENDY v14 Explorer</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=13">
 <script defer src="vendor/d3.min.js"></script>
 <script defer src="vendor/d3-geo-projection.min.js"></script>
 <script defer src="vendor/topojson-client.min.js"></script>
-<script defer src="app.js"></script>
+<script defer src="app.js?v=13"></script>
 </head>
 <body>
 <div id="boot"><div class="boot-card"><div class="boot-title">TRENDY&nbsp;v14 Explorer</div>
@@ -47,28 +47,38 @@
 </div>
 
 <div id="app">
-  <div id="mapcol">
-    <div id="mapwrap">
+  <div id="maprow">
+    <div id="mapcol"><div id="mapwrap">
       <canvas id="map"></canvas>
       <canvas id="coast"></canvas>
       <div id="hover" class="mono"></div>
       <div id="draghint" class="muted">drag: globe→rotate · flat map→select region</div>
-    </div>
-    <canvas id="cbar2"></canvas>
-    <div class="timebar">
-      <button id="play">▶</button>
-      <input id="time" type="range" min="0" value="0" step="1">
-      <span id="tlabel" class="mono"></span>
-      <span class="spd">speed <input id="speed" type="range" min="1" max="24" value="8"></span>
-    </div>
+    </div></div>
+    <aside id="zonalcol">
+      <div class="panel"><div class="panel-hd">Zonal mean <span class="muted">— current month</span></div><canvas id="zonal"></canvas></div>
+    </aside>
   </div>
-  <aside id="side">
+  <canvas id="cbar2"></canvas>
+  <div class="timebar">
+    <button id="play">▶</button>
+    <input id="time" type="range" min="0" value="0" step="1">
+    <span id="tlabel" class="mono"></span>
+    <span class="spd">speed <input id="speed" type="range" min="1" max="24" value="8"></span>
+  </div>
+  <div id="bottomrow">
     <div class="panel"><div class="panel-hd">Global mean <span class="muted" id="gmunits"></span></div><canvas id="gm"></canvas>
       <div class="muted">models (grey) · selected (green) · ensemble (orange)</div></div>
-    <div class="panel"><div class="panel-hd">Zonal mean <span class="muted">— current month</span></div><canvas id="zonal"></canvas></div>
     <div class="panel"><div class="panel-hd" id="tstitle">Cell / region series</div><canvas id="ts"></canvas>
       <div id="tsinfo" class="muted">Click a cell, or drag a box on a flat map.</div></div>
-  </aside>
+  </div>
+  <div class="panel" id="icpanel"><div class="panel-hd">Model intercomparison <span class="muted" id="icunits"></span></div>
+    <canvas id="intercomp"></canvas>
+    <div id="ictip" class="mono"></div>
+    <div class="muted" id="iccap">models (blue, high→low) · ensemble mean ±1σ across models (orange) · observations (green)</div></div>
+  <div class="panel" id="rmsepanel"><div class="panel-hd">Carbon-flux RMSE vs observations <span class="muted">— each dot is a model</span></div>
+    <canvas id="rmsebox"></canvas>
+    <div id="rmsetip" class="mono"></div>
+    <div class="muted">box = interquartile range · orange line = median · each dot = a model · hover a dot for model &amp; RMSE</div></div>
 </div>
 </body>
 </html>

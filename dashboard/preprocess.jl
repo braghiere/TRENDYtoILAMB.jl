@@ -31,12 +31,25 @@ jstrarr(v) = "[" * join(["\"$(s)\"" for s in v], ",") * "]"
 #                                     display vmin, vmax, diverging?)
 const VARDEF = Dict(
     "gpp"  => (86_400_000.0, "g C m-2 day-1", 0.001, 0.0, 12.0, false),
+    "npp"  => (86_400_000.0, "g C m-2 day-1", 0.001, -1.0, 6.0, false),
     "nbp"  => (86_400_000.0, "g C m-2 day-1", 0.001, -3.0, 3.0, true),
-    "lai"  => (1.0,          "m2 m-2",        0.001, 0.0, 7.0,  false),
+    "ra"   => (86_400_000.0, "g C m-2 day-1", 0.001, 0.0, 8.0,  false),
+    "rh"   => (86_400_000.0, "g C m-2 day-1", 0.001, 0.0, 6.0,  false),
     "cVeg" => (1.0,          "kg C m-2",      0.005, 0.0, 25.0, false),
+    "cSoil"=> (1.0,          "kg C m-2",      0.01,  0.0, 50.0, false),
+    "lai"  => (1.0,          "m2 m-2",        0.001, 0.0, 7.0,  false),
     "et"   => (86_400.0,     "mm day-1",      0.001, 0.0, 6.0,  false),
+    "tran" => (86_400.0,     "mm day-1",      0.001, 0.0, 4.0,  false),
+    "mrro" => (86_400.0,     "mm day-1",      0.001, 0.0, 6.0,  false),
+    "mrso" => (1.0,          "kg m-2",        0.1,   0.0, 1500.0, false),
+    "pr"   => (86_400.0,     "mm day-1",      0.001, 0.0, 10.0, false),
+    "tas"  => (1.0,          "K",             0.02,  240.0, 310.0, false),
+    "rsds" => (1.0,          "W m-2",         0.02,  0.0, 320.0, false),
 )
-const VARORDER = ["gpp", "nbp", "lai", "cVeg", "et"]
+const VARORDER = ["gpp","npp","nbp","ra","rh","cVeg","cSoil","lai","et","tran","mrro","mrso","pr","tas","rsds"]
+# model/var combos excluded from the ENSEMBLE mean/std (kept as individual layers):
+# VISIT-UT tas corrected (+546.30 K) so it rejoins; ED pr is ~12x too low (bad scaling).
+const BADENS = Dict("pr" => ["ED"])
 
 const FILLI16   = Int16(-32768)
 const Y0, Y1    = 1980, 2024
@@ -83,11 +96,19 @@ function regrid_model(model, srcvar, factor)
         ix = nn_index(lon[lop], tlon); iy = nn_index(lat[lap], tlat)
         var = ds[srcvar]; dn = dimnames(var)
         td = findfirst(==("time"), dn)
-        latd = findfirst(x -> x in ("lat","latitude"), dn)
-        lond = findfirst(x -> x in ("lon","longitude"), dn)
+        # some models carry an extra (e.g. singleton soil layer) dim, e.g. CABLE-POP
+        # mrso(time,soil,lat,lon). Select layer 1 of any non-time/lat/lon dim so the
+        # read collapses to a 3-D (time,lat,lon) block.
+        isspatial(d) = d in ("time","lat","latitude","lon","longitude")
+        extra = findall(d -> !isspatial(d), dn)
         kf, kl = first(keep), last(keep)
-        selb = Any[Colon(),Colon(),Colon()]; selb[td] = kf:kl
+        selb = Any[Colon() for _ in dn]; selb[td] = kf:kl
+        for e in extra; selb[e] = 1; end
         block = Array{Union{Missing,Float32}}(var[selb...])
+        remdims = dn[[i for i in 1:length(dn) if !(i in extra)]]
+        td = findfirst(==("time"), remdims)
+        latd = findfirst(x -> x in ("lat","latitude"), remdims)
+        lond = findfirst(x -> x in ("lon","longitude"), remdims)
         out = fill(Float32(NaN), NT, NLAT, NLON)
         # annual (pool) variables carry ~1 timestep/year -> replicate across the 12
         # months of that year so the monthly axis is filled (map + totals correct).
@@ -131,7 +152,9 @@ end
 
 function main()
     vars = haskey(ENV,"VARS") ? split(ENV["VARS"], ",") : VARORDER
-    allmodels = sort(filter(d -> isdir(joinpath(INROOT,d)) && !startswith(d,"_"), readdir(INROOT)))
+    # TRENDY-ENSEMBLE is an ILAMB pseudo-model we write into INROOT; it is NOT a
+    # source model for the dashboard (the dashboard builds its own ENSEMBLE-mean).
+    allmodels = sort(filter(d -> isdir(joinpath(INROOT,d)) && !startswith(d,"_") && d != "TRENDY-ENSEMBLE", readdir(INROOT)))
     models = haskey(ENV,"MODELS") ? String.(split(ENV["MODELS"], ",")) : allmodels
     gmeans = Dict{String,Dict{String,Vector{Float64}}}()
     varmeta = String[]
@@ -152,8 +175,14 @@ function main()
             f === nothing && (println("  $m: no data"); continue)
             writebin(joinpath(OUTROOT, v, "$(m).bin"), pack(f, scale))
             gmeans[v][m] = global_means(f)
-            @inbounds for k in eachindex(f)
-                x = f[k]; if !isnan(x); esum[k]+=x; esq[k]+=x*x; ecnt[k]+=1; end
+            # keep the individual layer but exclude known-corrupt model/var combos
+            # from the ensemble (VISIT-UT tas sign-flip, ED pr ~13x scaling).
+            if !(m in get(BADENS, v, String[]))
+                @inbounds for k in eachindex(f)
+                    x = f[k]; if !isnan(x); esum[k]+=x; esq[k]+=x*x; ecnt[k]+=1; end
+                end
+            else
+                println("  $m: excluded from $v ensemble (known data issue)")
             end
             push!(vmodels, m); (m in donemodels) || push!(donemodels, m)
             @printf("  %-12s ok\n", m)
