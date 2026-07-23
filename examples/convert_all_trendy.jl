@@ -81,9 +81,9 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
     for model in models
         println("\nProcessing model: $model")
         model_dir = joinpath(trendy_dir, model)
-        
-        # Process each simulation type (S0-S3)
-        for sim in ["S0", "S1", "S2", "S3"]
+
+        # Process only S2 simulation (historical CO2 + climate, fixed land use)
+        for sim in ["S2"]
             sim_dir = joinpath(model_dir, sim)
             
             # Skip if simulation directory doesn't exist
@@ -106,7 +106,7 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     continue
                 end
                 
-                var = parts[end][1:end-3]  # Remove .nc extension
+                var = String(parts[end][1:end-3])  # Remove .nc extension, convert to String
                 
                 # Skip if not an ILAMB variable
                 if !(lowercase(var) in lowercase.(ilamb_vars))
@@ -114,6 +114,15 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     continue
                 end
                 
+                # Skip if already converted (resume support)
+                # Use ILAMB-normalized case for variable names (e.g., LAI → lai, csoil → cSoil)
+                normalized_var = normalize_variable_case(var)
+                existing = filter(x -> startswith(x, "$(normalized_var)_Lmon_ENSEMBLE-$(model)_"), readdir(output_dir))
+                if !isempty(existing)
+                    push!(skipped_files, joinpath(model, sim, file) * " (already converted)")
+                    continue
+                end
+
                 total_files += 1
                 input_file = joinpath(sim_dir, file)
                 println("  Converting $file (ILAMB variable: $var)...")
@@ -144,7 +153,14 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
                     )
                     
                     println("    🔄 Converting to ILAMB format...")
-                    ilamb_dataset = convert_to_ilamb(dataset, output_dir=output_dir)
+                    # Use standardized date range for ALL TRENDY files to ensure ILAMB pattern matching works
+                    # ILAMB searches for files with consistent date patterns - if different variables
+                    # have different date ranges in filenames, ILAMB won't find them all.
+                    # The actual data coverage in each file remains authentic (may have gaps).
+                    ilamb_dataset = convert_to_ilamb(dataset, 
+                                                    output_dir=output_dir,
+                                                    override_start_date="170001",
+                                                    override_end_date="202412")
                     
                     # Get output file size
                     output_file = ilamb_dataset.path
@@ -255,8 +271,8 @@ function convert_all_trendy_files(trendy_dir::String; output_base::String="outpu
 end
 
 # Path to TRENDY data
-const TRENDY_DIR = "/home/renatob/data/TRENDYv13"
-const OUTPUT_DIR = "/home/renatob/data/ilamb_ready"
+const TRENDY_DIR = "/kiwi-data/Data/model/TRENDYv14/S2"
+const OUTPUT_DIR = "/home/renatob/data/ilamb_output_v14_S2"
 
 # Create output directory if it doesn't exist
 mkpath(OUTPUT_DIR)

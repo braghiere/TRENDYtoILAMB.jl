@@ -1,12 +1,21 @@
 """
-    convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
+    convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", override_start_date::Union{String,Nothing}=nothing, override_end_date::Union{String,Nothing}=nothing)
 
 Convert a TRENDY dataset to ILAMB format.
 
 Output filename format: {variable}_Lmon_{model}_historical_{simulation}_gn_{start_date}-{end_date}.nc
 Example: gpp_Lmon_CARDAMOM_historical_S3_gn_200101-202112.nc
+
+Arguments:
+- dataset: TRENDYDataset to convert
+- output_dir: Directory to write output files  
+- override_start_date: Optional fixed start date (YYYYMM format) for filename standardization
+- override_end_date: Optional fixed end date (YYYYMM format) for filename standardization
+
+Note: override dates are used ONLY in filenames to ensure ILAMB pattern matching works.
+The actual time values in the file reflect the true data coverage.
 """
-function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
+function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".", override_start_date::Union{String,Nothing}=nothing, override_end_date::Union{String,Nothing}=nothing)
     # Open input dataset
     ds_in = Dataset(dataset.path)
     
@@ -19,9 +28,12 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     has_time_units = time_units_attr !== nothing
     time_units = something(time_units_attr, "days since 1850-01-01")
     calendar_attr = get(ds_in["time"].attrib, "calendar", "noleap")
-    # Special case: ISAM-style encoded months do not follow CF time units
+    # Special cases: ISAM-style encoded times do not follow CF time units
     is_yearmonth_encoded = occursin("month as %Y%m", time_units)
-    reference_year = is_yearmonth_encoded ? 0 : parse_units(time_units)
+    is_year_encoded = occursin("year as %Y", time_units)
+    is_yearday_encoded = occursin("day as %Y%m%d", time_units)
+    is_encoded_time = is_yearmonth_encoded || is_year_encoded || is_yearday_encoded
+    reference_year = is_encoded_time ? 0 : parse_units(time_units)
 
     # Read time values with a robust fallback if CF decoding fails
     time_values = nothing
@@ -41,7 +53,26 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     # 1. Time units are missing or non-standard, AND
     # 2. Values form consecutive sequence starting from 1
     is_nonstandard_units = !has_time_units || !occursin(r"^(days|months|years|hours) since ", time_units)
-    is_month_index = (length(time_values) > 1 && 
+
+    # Detect bare decimal-year time with no usable CF units, e.g. ELM-FATES stores
+    # 1701.0, 1701.08333, 1701.16667, ... (year + month/12) and no `units` attr.
+    # Without this, the values are misread as "days since 1850" and the whole
+    # record collapses into ~1854. Requires fractional parts and a ~1/12 step.
+    numeric_times = try
+        Float64.(time_values)
+    catch
+        Float64[]
+    end
+    is_decimal_year_monthly = false
+    if is_nonstandard_units && length(numeric_times) > 1 &&
+       all(v -> 1500.0 <= v <= 2200.0, numeric_times) &&
+       any(v -> abs(v - round(v)) > 1e-4, numeric_times)
+        steps = diff(numeric_times)
+        med = sort(steps)[cld(length(steps), 2)]
+        is_decimal_year_monthly = 0.06 < med < 0.12   # ~1/12 year (monthly)
+    end
+
+    is_month_index = (length(time_values) > 1 &&
                      time_values[1] == 1 && 
                      time_values[2] == 2 &&
                      all(diff(time_values) .== 1) &&
@@ -65,6 +96,69 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         end_year, end_month = days_to_year_month(time_bounds[end, 2] - 1)
         start_date = string(start_year) * lpad(start_month, 2, '0')
         end_date = string(end_year) * lpad(end_month, 2, '0')
+    elseif is_year_encoded
+        # Values are years (e.g., ISAM "year as %Y.%f": 1700, 1701, ..., 2023)
+        # Annual data — create one time step per year with Jan 1 to Jan 1 bounds
+        n = length(time_values)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        for i in 1:n
+            year = round(Int, time_values[i])
+            start_day = days_since_1850_for_month_start(year, 1)
+            end_day = days_since_1850_for_month_start(year + 1, 1)
+            days[i] = start_day + (end_day - start_day) / 2
+            time_bounds[i, 1] = start_day
+            time_bounds[i, 2] = end_day
+        end
+        start_year = round(Int, time_values[1])
+        end_year = round(Int, time_values[end])
+        start_date = string(start_year) * "01"
+        end_date = string(end_year) * "12"
+        @info "Year-encoded time" n_years=n start_year=start_year end_year=end_year
+    elseif is_yearday_encoded
+        # Values encoded as YYYYMMDD (e.g., ISAM "day as %Y%m%d.%f")
+        # Some files have broken (all-zero) time values — generate synthetic monthly time
+        n = length(time_values)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        if all(v -> v == 0 || isnan(v), time_values)
+            # Broken time — assume TRENDY standard 1700–2023 monthly data
+            @warn "Time values are all zero with '$time_units' encoding; generating synthetic monthly time from 1700" n_timesteps=n
+            start_year_val = 1700
+            for i in 1:n
+                month_offset = i - 1
+                y = start_year_val + div(month_offset, 12)
+                m = (month_offset % 12) + 1
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+            start_date = string(start_year_val) * "01"
+            n_total_months = n
+            end_year_val = start_year_val + div(n_total_months - 1, 12)
+            end_month_val = ((n_total_months - 1) % 12) + 1
+            end_date = string(end_year_val) * lpad(end_month_val, 2, '0')
+        else
+            # Parse YYYYMMDD-encoded values as monthly midpoints
+            for i in 1:n
+                v = round(Int, time_values[i])
+                y = div(v, 10000)
+                m = div(v % 10000, 100)
+                m = max(1, min(12, m))
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+            first_v = round(Int, time_values[1])
+            last_v = round(Int, time_values[end])
+            start_date = string(div(first_v, 10000)) * lpad(div(first_v % 10000, 100), 2, '0')
+            end_date = string(div(last_v, 10000)) * lpad(div(last_v % 10000, 100), 2, '0')
+        end
+        @info "Day-encoded time" n_timesteps=n start_date=start_date end_date=end_date
     elseif is_month_index && dataset.model == "CARDAMOM"
         # CARDAMOM: Time values are month indices starting from 1
         # CARDAMOM data starts in January 2003
@@ -86,22 +180,60 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             time_bounds[i, 1] = start_day
             time_bounds[i, 2] = end_day
         end
-    elseif decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || decoded_times[1] isa Dates.AbstractDateTime)
-        # CFTime/DateTime: build bounds by stepping monthly from the first year/month to ensure contiguity
-        n = length(decoded_times)
+    elseif is_decimal_year_monthly
+        # Bare decimal-year monthly time (e.g. ELM-FATES): map each value to its
+        # (year, month) and build contiguous monthly bounds.
+        n = length(numeric_times)
         days = zeros(Float64, n)
         time_bounds = zeros(Float64, n, 2)
-        y0 = Dates.year(decoded_times[1])
-        m0 = Dates.month(decoded_times[1])
         for i in 1:n
-            month_idx = (m0 - 1) + (i - 1)
-            y = y0 + div(month_idx, 12)
-            m = (month_idx % 12) + 1
+            yv = numeric_times[i]
+            y = floor(Int, yv + 1e-6)
+            m = clamp(round(Int, (yv - y) * 12) + 1, 1, 12)
             sday = days_since_1850_for_month_start(y, m)
             eday = days_since_1850_for_month_end(y, m)
             days[i] = sday + (eday - sday) / 2
             time_bounds[i, 1] = sday
             time_bounds[i, 2] = eday
+        end
+    elseif decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || decoded_times[1] isa Dates.AbstractDateTime)
+        # CFTime/DateTime: detect annual vs monthly resolution, then build bounds accordingly
+        n = length(decoded_times)
+        days = zeros(Float64, n)
+        time_bounds = zeros(Float64, n, 2)
+        y0 = Dates.year(decoded_times[1])
+        m0 = Dates.month(decoded_times[1])
+
+        # Detect temporal resolution: if the year advances between first two timesteps, it's annual
+        is_annual_data = false
+        if n >= 2
+            y1 = Dates.year(decoded_times[2])
+            is_annual_data = (y1 - y0) >= 1
+        end
+
+        if is_annual_data
+            # Annual data: one time step per year, bounds span full year
+            @info "Detected annual data from CFTime" n_years=n first_year=y0
+            for i in 1:n
+                y = Dates.year(decoded_times[i])
+                sday = days_since_1850_for_month_start(y, 1)
+                eday = days_since_1850_for_month_start(y + 1, 1)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
+        else
+            # Monthly data: step month by month from first year/month to ensure contiguity
+            for i in 1:n
+                month_idx = (m0 - 1) + (i - 1)
+                y = y0 + div(month_idx, 12)
+                m = (month_idx % 12) + 1
+                sday = days_since_1850_for_month_start(y, m)
+                eday = days_since_1850_for_month_end(y, m)
+                days[i] = sday + (eday - sday) / 2
+                time_bounds[i, 1] = sday
+                time_bounds[i, 2] = eday
+            end
         end
     elseif occursin("months since", lowercase(time_units))
         # Numeric months since a reference date; assume monthly cadence starting from the first value
@@ -128,34 +260,33 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     # No benchmark-dependent trimming; ensure time_bounds/time are contiguous and match data length
     time_indices_used = collect(1:length(time_values))
 
-    # Calculate start and end dates if not set yet
+    # Calculate start and end dates if not set yet.
+    # Derive them from the authoritative rebuilt time axis (time_bounds, in days
+    # since 1850) rather than from raw decoded_times: for non-CF encodings such as
+    # "months since", CFTime approximates a month as ~30.44 days, so its endpoints
+    # drift by several months over a multi-century record (e.g. CABLE-POP showed
+    # 2025-03 in the filename while the real last month is 2024-12).
     if isempty(start_date)
-        if decoded_times !== nothing && !isempty(decoded_times) && (decoded_times[1] isa NCDatasets.CFTime.AbstractCFDateTime || 
-                                      decoded_times[1] isa Dates.AbstractDateTime)
-            start_year = Dates.year(decoded_times[1])
-            start_month = Dates.month(decoded_times[1])
-            end_year = Dates.year(decoded_times[end])
-            end_month = Dates.month(decoded_times[end])
-        else
-            start_days_since_1850 = days[1]
-            start_years_from_1850 = start_days_since_1850 / 365.0
-            start_year = 1850 + floor(Int, start_years_from_1850)
-            start_day_in_year = start_days_since_1850 - (start_year - 1850) * 365.0
-            start_month = max(1, min(12, ceil(Int, (start_day_in_year / 365.0) * 12)))
-            
-            end_days_since_1850 = days[end]
-            end_years_from_1850 = end_days_since_1850 / 365.0
-            end_year = 1850 + floor(Int, end_years_from_1850)
-            end_day_in_year = end_days_since_1850 - (end_year - 1850) * 365.0
-            end_month = max(1, min(12, ceil(Int, (end_day_in_year / 365.0) * 12)))
-        end
+        start_year, start_month = days_to_year_month(time_bounds[1, 1])
+        end_year, end_month = days_to_year_month(time_bounds[end, 2] - 1)
         start_date = string(start_year) * lpad(start_month, 2, '0')
         end_date = string(end_year) * lpad(end_month, 2, '0')
     end
     
+    # Override dates if provided (for filename standardization across model files)
+    # This ensures ILAMB's pattern matching works even when variables have different temporal coverage
+    if override_start_date !== nothing
+        start_date = override_start_date
+    end
+    if override_end_date !== nothing
+        end_date = override_end_date
+    end
+    
     # Create ILAMB-compliant filename
     # Format: {variable}_Lmon_ENSEMBLE-{model}_historical_r1i1p1f1_gn_{start_date}-{end_date}.nc
-    filename = "$(dataset.variable)_Lmon_ENSEMBLE-$(dataset.model)_historical_r1i1p1f1_gn_$(start_date)-$(end_date).nc"
+    # Normalize variable case to match ILAMB expectations (e.g., LAI → lai, csoil → cSoil)
+    normalized_var = normalize_variable_case(dataset.variable)
+    filename = "$(normalized_var)_Lmon_ENSEMBLE-$(dataset.model)_historical_r1i1p1f1_gn_$(start_date)-$(end_date).nc"
     
     # Output directly in model directory (no S3 subdirectory)
     output_file = joinpath(output_dir, filename)
@@ -178,11 +309,24 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         var_atts = ds_in[dataset.variable].attrib
         meta = get_variable_metadata(dataset.variable)
         raw_units = get(var_atts, "units", nothing)
-        raw_units = something(raw_units, get(var_atts, "unit", meta.units))
+        # Fall back to "unit" attribute if "units" is missing or non-string (e.g., NaN)
+        if raw_units === nothing || !(raw_units isa AbstractString)
+            raw_units = get(var_atts, "unit", meta.units)
+        end
+        if raw_units === nothing || !(raw_units isa AbstractString)
+            raw_units = meta.units
+        end
         units = standardize_units(raw_units)
         # If sanitization produces something obviously wrong, fall back to mapped metadata units
-        if units == raw_units || occursin(r"m1", units) || occursin(r"m\\$1", raw_units)
+        if isempty(units) || units == raw_units || occursin(r"m1", units) || occursin(r"m\$1", raw_units)
             units = meta.units
+        end
+        # Safety net: never emit "unknown". If the variable has no registry mapping,
+        # preserve the (standardized) source units so files stay CF-usable
+        # (e.g. JSBACH hfls is "W m-2" at the source).
+        if isempty(units) || units == "unknown"
+            su = standardize_units(raw_units)
+            units = (isempty(su) || su == "unknown") ? raw_units : su
         end
         @info "Variable metadata" variable=dataset.variable units=units
         
@@ -248,18 +392,15 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
                    "bounds" => "time_bounds"
                ))
         
-        # Define time bounds variable
+        # Define time bounds variable.
+        # NCDatasets REVERSES dimension order on write (verified empirically:
+        # passing a Julia (n,2) array with dims ("time","nb") yields file tb(nb,time)).
+        # CF requires time_bounds(time, nb) in the FILE, so pass a (2, n_times) array
+        # with dims ("nb", "time"); NCDatasets reverses it to the CF (time, nb) layout.
         @info "Creating time_bounds variable" size=size(time_bounds)
-        # CF convention expects time_bounds(time, nb) in the file.
-        # NCDatasets uses Julia's column-major ordering, so:
-        # - Julia array shape (n_times, 2) with dims ("time", "nb") -> file has (nb, time)
-        # - Julia array shape (2, n_times) with dims ("nb", "time") -> file has (time, nb) ✓
-        # We need the second form for CF compliance.
         if size(time_bounds, 2) == 2  # Shape is (n_times, 2)
-            # Transpose to (2, n_times) and use dims ("nb", "time") for correct file layout
             defVar(ds_out, "time_bounds", permutedims(time_bounds, (2, 1)), ("nb", "time"))
         elseif size(time_bounds, 1) == 2  # Shape is (2, n_times)
-            # Already in correct shape, use dims ("nb", "time")
             defVar(ds_out, "time_bounds", time_bounds, ("nb", "time"))
         else
             error("Unexpected time_bounds shape: $(size(time_bounds))")
@@ -295,7 +436,28 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
             inds = Base.setindex(inds, time_indices, time_idx)
             var_data = var_data[inds...]
         end
+        
+        # Apply unit conversions to data values if needed
+        @info "Checking for unit conversions" raw_units=raw_units target_units=units
+        var_data = convert_data_values(var_data, raw_units, units, dataset.variable)
+        
+        # Special handling for precipitation mm → kg m-2 s-1
+        if dataset.variable == "pr" && occursin("mm", lowercase(raw_units))
+            var_data = convert_precipitation_values(var_data, raw_units, "monthly")
+        end
+        
         @info "Creating main variable" variable=dataset.variable size=size(var_data)
+
+        # Guard: flag degenerate output (all missing/NaN). A fully-masked variable
+        # is usually a bad/partial write and, once benchmarked, can crash ILAMB's
+        # relationship analysis (empty polyfit). Warn loudly so it isn't shipped silently.
+        let fill = get(var_atts, "_FillValue", nothing),
+            valid = count(x -> !ismissing(x) && !(x isa AbstractFloat && isnan(x)) &&
+                               !(fill isa Number && x == fill), var_data)
+            if valid == 0
+                @warn "Converted variable is entirely fill/NaN — likely a bad conversion" variable=dataset.variable file=output_file
+            end
+        end
 
         # Map input dimension names to output dimension names
         input_dims = dimnames(ds_in[dataset.variable])
@@ -308,11 +470,21 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
         )
         output_dims = Tuple(get(dim_name_map, d, d) for d in input_dims)
 
-        defVar(ds_out, dataset.variable, var_data, output_dims,
-               attrib = Dict(
-                   "units" => units,
-                   "long_name" => get(var_atts, "long_name", dataset.variable)
-               ))
+        # Build output attributes - preserve _FillValue if it exists in source
+        out_attribs = Dict{String, Any}(
+            "units" => units,
+            "long_name" => get(var_atts, "long_name", normalized_var)
+        )
+        if haskey(var_atts, "_FillValue")
+            out_attribs["_FillValue"] = var_atts["_FillValue"]
+        end
+
+        # Write the main variable with zlib compression (shuffle + deflate).
+        # TRENDY inputs are deflated; without this the ILAMB copies balloon ~5x
+        # (e.g. a 0.5deg gpp file goes 0.77 GB -> 4 GB).
+        defVar(ds_out, normalized_var, var_data, output_dims,
+               attrib = out_attribs,
+               shuffle = true, deflatelevel = 4)
         
     finally
         close(ds_in)
@@ -321,7 +493,7 @@ function convert_to_ilamb(dataset::TRENDYDataset; output_dir::String=".")
     
     return ILAMBDataset(
         output_file,
-        dataset.variable,
+        normalized_var,
         units,
         "days since 1850-01-01",
         "noleap"

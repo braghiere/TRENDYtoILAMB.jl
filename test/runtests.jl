@@ -30,4 +30,13 @@ using NCDatasets
         @test metadata.name == "cVeg"
         @test metadata.units == "kg m-2"
     end
+    
+    @testset "Date range utilities" begin
+        # Test standard date range function
+        start_date, end_date = get_standard_date_range()
+        @test start_date == "170001"
+        @test end_date == "202312"
+        @test length(start_date) == 6
+        @test length(end_date) == 6
+    end
 end

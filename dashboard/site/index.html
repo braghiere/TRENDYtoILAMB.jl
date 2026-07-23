@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRENDY v14 Explorer</title>
+<link rel="stylesheet" href="style.css?v=13">
+<script defer src="vendor/d3.min.js"></script>
+<script defer src="vendor/d3-geo-projection.min.js"></script>
+<script defer src="vendor/topojson-client.min.js"></script>
+<script defer src="app.js?v=13"></script>
+</head>
+<body>
+<div id="boot"><div class="boot-card"><div class="boot-title">TRENDY&nbsp;v14 Explorer</div>
+  <div class="boot-sub" id="boot-msg">loading…</div>
+  <div class="boot-track"><div class="boot-bar" id="boot-bar"></div></div></div></div>
+
+<header>
+  <div class="brand"><span class="dot"></span> TRENDY v14 / S2 <span class="brand-sub">land-carbon explorer</span></div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-v" id="kpi-mean">–</div><div class="kpi-k">global mean</div></div>
+    <div class="kpi"><div class="kpi-v" id="kpi-valid">–</div><div class="kpi-k">valid pixels</div></div>
+    <div class="kpi"><div class="kpi-v mono" id="kpi-month">–</div><div class="kpi-k" id="hdr-range"></div></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <label>Variable<select id="variable"></select></label>
+  <label>Layer<select id="model"></select></label>
+  <label>Mode<select id="mode">
+    <option value="value">Value</option><option value="anom">Anomaly</option><option value="diff">Δ vs ensemble</option>
+    <option value="trend">Trend map</option></select></label>
+  <label>Projection<select id="proj">
+    <option value="equalEarth">Equal Earth</option><option value="naturalEarth1">Natural Earth</option>
+    <option value="robinson">Robinson</option><option value="mollweide">Mollweide</option>
+    <option value="equirectangular">Equirectangular</option><option value="orthographic">Orthographic (globe)</option></select></label>
+  <label>Colormap<select id="cmap">
+    <option value="viridis">viridis</option><option value="turbo">turbo</option><option value="magma">magma</option>
+    <option value="plasma">plasma</option><option value="RdYlBu">RdYlBu</option><option value="RdBu">RdBu</option></select></label>
+  <label>Smoothness<input id="smooth" type="range" min="0" max="4" step="1" value="1"></label>
+  <label class="chk"><input type="checkbox" id="deseason"> deseasonalize</label>
+  <label class="chk"><input type="checkbox" id="detrend"> detrend</label>
+  <label>Range<span class="rng"><input id="vmin" type="number" step="any"><input id="vmax" type="number" step="any"></span></label>
+  <button id="autorange">auto</button><button id="pct">2–98%</button>
+  <button id="clearregion" title="clear region selection">clear region</button>
+  <span id="status" class="muted"></span>
+</div>
+
+<div id="app">
+  <div id="maprow">
+    <div id="mapcol"><div id="mapwrap">
+      <canvas id="map"></canvas>
+      <canvas id="coast"></canvas>
+      <div id="hover" class="mono"></div>
+      <div id="draghint" class="muted">drag: globe→rotate · flat map→select region</div>
+    </div></div>
+    <aside id="zonalcol">
+      <div class="panel"><div class="panel-hd">Zonal mean <span class="muted">— current month</span></div><canvas id="zonal"></canvas></div>
+    </aside>
+  </div>
+  <canvas id="cbar2"></canvas>
+  <div class="timebar">
+    <button id="play">▶</button>
+    <input id="time" type="range" min="0" value="0" step="1">
+    <span id="tlabel" class="mono"></span>
+    <span class="spd">speed <input id="speed" type="range" min="1" max="24" value="8"></span>
+  </div>
+  <div id="bottomrow">
+    <div class="panel"><div class="panel-hd">Global mean <span class="muted" id="gmunits"></span></div><canvas id="gm"></canvas>
+      <div class="muted">models (grey) · selected (green) · ensemble (orange)</div></div>
+    <div class="panel"><div class="panel-hd" id="tstitle">Cell / region series</div><canvas id="ts"></canvas>
+      <div id="tsinfo" class="muted">Click a cell, or drag a box on a flat map.</div></div>
+  </div>
+  <div class="panel" id="icpanel"><div class="panel-hd">Model intercomparison <span class="muted" id="icunits"></span></div>
+    <canvas id="intercomp"></canvas>
+    <div id="ictip" class="mono"></div>
+    <div class="muted" id="iccap">models (blue, high→low) · ensemble mean ±1σ across models (orange) · observations (green)</div></div>
+  <div class="panel" id="rmsepanel"><div class="panel-hd">Carbon-flux RMSE vs observations <span class="muted">— each dot is a model</span></div>
+    <canvas id="rmsebox"></canvas>
+    <div id="rmsetip" class="mono"></div>
+    <div class="muted">box = interquartile range · orange line = median · each dot = a model · hover a dot for model &amp; RMSE</div></div>
+</div>
+</body>
+</html>

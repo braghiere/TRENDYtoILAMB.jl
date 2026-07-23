@@ -5,6 +5,34 @@ All notable changes to TRENDYtoILAMB.jl will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-01
+
+### Added
+- TRENDY v14 / S2 support: retargeted single-model and bulk example scripts.
+- Detection of bare decimal-year monthly time (e.g. ELM-FATES: `1701.0, 1701.0833, …`)
+  when a file has no usable CF `units`; previously these were misread as
+  `days since 1850`, collapsing the whole record into ~1854.
+- `scripts/parallel_convert_local.sh`: non-SLURM parallel launcher (one worker
+  per model, capped concurrency) for single multi-core nodes.
+- Output compression (shuffle + deflate) on the main variable (~5x smaller files).
+- Configurable simulation subdirectory and filename date range in the model
+  worker via `SIM` / `OVERRIDE_START` / `OVERRIDE_END` env vars.
+- Registry metadata for `hfls`, `hfss`, `rlds`, `rlus`, `rsus`, `evspsbl`, `tran`.
+- Guard that warns when a converted variable is entirely fill/NaN (usually a
+  bad/partial write).
+- `examples/test_awkward_models.jl` covering months-since / years-since /
+  month-index encodings.
+
+### Fixed
+- Never emit `units = "unknown"`: for variables without a registry mapping,
+  preserve the (standardized) source units so files stay CF-usable. Fixes ILAMB
+  `UnitConversionError` (e.g. JSBACH `hfls`, source `W m-2`).
+- Derive filename start/end dates from the rebuilt `time_bounds` rather than raw
+  CFTime endpoints, fixing `months since` filenames (e.g. CABLE-POP `202503` →
+  `202412`).
+- Verification no longer crashes on ocean-masked (`missing`) data; the valid
+  mask is built element-wise so `missing` is never passed to `Float64`/`isnan`.
+
 ## [0.1.0] - 2024-10-18
 
 ### Added
