@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TRENDY v14 Explorer</title>
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 <script defer src="vendor/d3.min.js"></script>
 <script defer src="vendor/d3-geo-projection.min.js"></script>
 <script defer src="vendor/topojson-client.min.js"></script>
-<script defer src="app.js?v=14"></script>
+<script defer src="app.js?v=15"></script>
 </head>
 <body>
 <div id="boot"><div class="boot-card"><div class="boot-title">TRENDY&nbsp;v14 Explorer</div>
@@ -85,5 +85,21 @@
     <div id="rmsetip" class="mono"></div>
     <div class="muted">box = interquartile range · orange line = median · each dot = a model · hover a dot for model &amp; RMSE</div></div>
 </div>
+
+<footer id="refs">
+  <div class="refs-hd">References &amp; data</div>
+  <ul>
+    <li><b>Model output (data):</b> Global Carbon Budget data browser — TRENDY land &amp; ocean model output (M. O'Sullivan, Univ. of Exeter).
+      <a href="https://mdosullivan.github.io/GCB/" target="_blank" rel="noopener">mdosullivan.github.io/GCB</a> ·
+      data DOI <a href="https://doi.org/10.18160/GCP-2025" target="_blank" rel="noopener">10.18160/GCP-2025</a></li>
+    <li><b>Global Carbon Budget 2025:</b> Friedlingstein, P., O'Sullivan, M., Jones, M. W., <i>et al.</i> (2025). Global Carbon Budget 2025. <i>Earth System Science Data</i>, 18, 3211–3288.
+      <a href="https://doi.org/10.5194/essd-18-3211-2026" target="_blank" rel="noopener">doi:10.5194/essd-18-3211-2026</a></li>
+    <li><b>TRENDY (project overview):</b> Sitch, S., <i>et al.</i> (2024). Trends and Drivers of Terrestrial Sources and Sinks of Carbon Dioxide: An Overview of the TRENDY Project. <i>Global Biogeochemical Cycles</i>, 38, e2024GB008102.
+      <a href="https://doi.org/10.1029/2024GB008102" target="_blank" rel="noopener">doi:10.1029/2024GB008102</a></li>
+    <li><b>TRENDY (foundational):</b> Sitch, S., <i>et al.</i> (2015). Recent trends and drivers of regional sources and sinks of carbon dioxide. <i>Biogeosciences</i>, 12, 653–679.
+      <a href="https://doi.org/10.5194/bg-12-653-2015" target="_blank" rel="noopener">doi:10.5194/bg-12-653-2015</a></li>
+  </ul>
+  <div class="refs-note">Dashboard: TRENDY v14 (S2/S3) converted to ILAMB and benchmarked. Please cite the sources above when using these data.</div>
+</footer>
 </body>
 </html>

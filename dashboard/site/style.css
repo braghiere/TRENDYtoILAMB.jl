@@ -65,3 +65,11 @@ body.scendiff #icpanel,body.scendiff #rmsepanel{display:none;}
 #ictip,#rmsetip{position:absolute;display:none;pointer-events:none;z-index:6;background:rgba(0,0,0,.82);border:1px solid #2b3542;padding:4px 8px;border-radius:5px;font-size:12px;line-height:1.35;color:#e6edf3;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5);}
 #ictip b,#rmsetip b{color:#bff4ee;}
 @media(max-width:1000px){#maprow{flex-direction:column;}#zonalcol{flex:1 1 auto;}#zonalcol .panel{height:220px;}#bottomrow{flex-direction:column;}}
+
+#refs{border-top:1px solid var(--line);margin:20px 16px 0;padding:16px 2px 30px;color:var(--muted);font-size:12px;}
+#refs .refs-hd{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8b98a5;margin-bottom:9px;}
+#refs ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;}
+#refs li{line-height:1.5;}
+#refs b{color:#c7d2dc;font-weight:600;}#refs i{color:#aeb9c4;font-style:italic;}
+#refs a{color:var(--accent);text-decoration:none;}#refs a:hover{text-decoration:underline;}
+#refs .refs-note{margin-top:12px;color:#6b7683;font-size:11px;}
