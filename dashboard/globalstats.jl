@@ -7,7 +7,7 @@ aggregates and tag each variable's global-metric units in manifest.json:
 Reads the packed Int16 bins (fast); does not touch the map data.
 =#
 using Printf
-const D = joinpath(@__DIR__, "site", "data")
+const D = get(ENV, "GM_DATA_DIR", joinpath(@__DIR__, "site", "data"))  # per-scenario override
 const R = 6.371e6                                  # Earth radius (m)
 
 read_manifest() = read(joinpath(D, "manifest.json"), String)
@@ -45,16 +45,19 @@ const rowA = [cellA[((k-1) ÷ nlon) + 1] for k in 1:block]   # per-cell area, lo
 function series(raw, scale, kind)
     s = Vector{Float64}(undef, nt)
     @inbounds for t in 1:nt
-        base = (t-1)*block; acc = 0.0; wsum = 0.0
+        base = (t-1)*block; acc = 0.0; wsum = 0.0; nval = 0
         for k in 1:block
             v = raw[base+k]; v == fill && continue
+            nval += 1
             val = v*scale; a = rowA[k]
             if kind === :flux;      acc += val*a*365.0*1e-15
             elseif kind === :pool;  acc += val*a*1e-12
             else;                   acc += val*a; wsum += a
             end
         end
-        s[t] = kind === :mean ? (wsum > 0 ? acc/wsum : NaN) : acc
+        # empty timesteps -> NaN (not 0) so short-record models (e.g. CARDAMOM 2003-)
+        # aren't diluted when averaged over the full window
+        s[t] = kind === :mean ? (wsum > 0 ? acc/wsum : NaN) : (nval > 0 ? acc : NaN)
     end
     s
 end

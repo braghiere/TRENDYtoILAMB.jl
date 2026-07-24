@@ -14,6 +14,14 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,Segoe
 header{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid var(--line);}
 .brand{font-weight:700;font-size:15px;}.brand-sub{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px;}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:6px;box-shadow:0 0 8px var(--accent);}
+.scenwrap{display:flex;gap:6px;align-items:center;}
+.scenbtn{background:#0b0f14;color:var(--muted);border:1px solid #263039;border-radius:16px;padding:4px 14px;font-weight:700;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.05;font-family:inherit;}
+.scenbtn em{font-style:normal;font-weight:400;font-size:9px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);margin-top:2px;}
+.scenbtn:hover{border-color:var(--accent);color:var(--fg);}
+.scenbtn.active{background:rgba(94,208,197,.16);border-color:var(--accent);color:#bff4ee;}
+.scenbtn.active em{color:var(--accent);}
+.scenbtn[data-scen="S3-S2"].active{background:rgba(227,160,8,.16);border-color:var(--orange);color:#ffe0a3;}
+.scenbtn[data-scen="S3-S2"].active em{color:var(--orange);}
 .kpis{display:flex;gap:22px;}
 .kpi{text-align:right;}.kpi-v{font-size:16px;font-weight:700;color:#fff;}.kpi-k{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
 
@@ -53,6 +61,7 @@ canvas#zonal{flex:1;width:100%;min-height:180px;background:#0b0f14;border:1px so
 canvas#intercomp{width:100%;height:360px;background:#0b0f14;border:1px solid var(--line);border-radius:6px;display:block;}
 canvas#rmsebox{width:100%;height:300px;background:#0b0f14;border:1px solid var(--line);border-radius:6px;display:block;}
 #icpanel,#rmsepanel{position:relative;}
+body.scendiff #icpanel,body.scendiff #rmsepanel{display:none;}
 #ictip,#rmsetip{position:absolute;display:none;pointer-events:none;z-index:6;background:rgba(0,0,0,.82);border:1px solid #2b3542;padding:4px 8px;border-radius:5px;font-size:12px;line-height:1.35;color:#e6edf3;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5);}
 #ictip b,#rmsetip b{color:#bff4ee;}
 @media(max-width:1000px){#maprow{flex-direction:column;}#zonalcol{flex:1 1 auto;}#zonalcol .panel{height:220px;}#bottomrow{flex-direction:column;}}

@@ -10,7 +10,7 @@ const CMAPS={
 const DIVERGING=new Set(["RdBu","RdYlBu"]);
 function lutColor(a,t){t=t<0?0:t>1?1:t;const x=t*(a.length-1),k=x|0,f=x-k,p=a[k],q=a[Math.min(k+1,a.length-1)];return[p[0]+(q[0]-p[0])*f,p[1]+(q[1]-p[1])*f,p[2]+(q[2]-p[2])*f];}
 
-let M,GM,OBS={},RMSE=null,LAND,T=0,playing=null,disp=null;
+let M,GM,OBS={},RMSE=null,LAND,T=0,playing=null,disp=null,SCEN="S2";
 let projName="equalEarth",PX=null,PY=null,MW=0,MH=0,rot=[0,-15],DPR=1;
 let region=null,regionPix=null,COSLAT=null,CELLA=null;
 let IC=null;                                   // last intercomp layout, for hover tooltip
@@ -33,15 +33,11 @@ let _raf=null;function scheduleGlobe(){if(_raf)return;_raf=requestAnimationFrame
 const OFF=document.createElement("canvas");
 
 async function boot(){
-  setBoot("manifest…",15);M=await(await fetch("data/manifest.json")).json();GM=await(await fetch("data/globalmeans.json")).json();
-  try{OBS=await(await fetch("data/obs.json")).json();}catch(e){OBS={};}
-  try{RMSE=await(await fetch("data/rmse.json")).json();}catch(e){RMSE=null;}
+  setBoot("manifest…",15);await loadScenarioData("S2");
   setBoot("coastlines…",35);const topo=await(await fetch("vendor/land-110m.json")).json();LAND=topojson.feature(topo,topo.objects.land);
   COSLAT=M.lat.map(l=>Math.cos(l*Math.PI/180));
   {const R=6.371e6,d=Math.PI/180;CELLA=M.lat.map(l=>R*R*d*(Math.sin((l+0.5)*d)-Math.sin((l-0.5)*d)));}
-  M.variables.forEach(v=>{const o=document.createElement("option");o.value=o.textContent=v.name;$("variable").appendChild(o);});
-  M.models.forEach(m=>{const o=document.createElement("option");o.value=o.textContent=m;$("model").appendChild(o);});
-  $("model").value=M.models.find(m=>!m.startsWith("ENSEMBLE"))||M.models[0];
+  populateSelects();wireScenarioButtons();
   $("time").max=M.nt-1;$("hdr-range").textContent=`${M.times[0]}–${M.times[M.nt-1]}`;
   $("variable").onchange=()=>{setDefaultRange();refresh();replotSeries();};
   $("model").onchange=()=>{refresh();replotSeries();};
@@ -66,10 +62,46 @@ async function boot(){
 }
 function setBoot(m,p){$("boot-msg").textContent=m;$("boot-bar").style.width=p+"%";}
 function debounce(fn,ms){let h;return(...a)=>{clearTimeout(h);h=setTimeout(()=>fn(...a),ms);};}
-function isDiv(){return curMode()==="anom"||curMode()==="diff"||curMode()==="trend"||vmeta(curVar()).diverging;}
+
+// ---- scenario handling (S2 / S3 / S3−S2 land-use difference) ----
+const j=async u=>(await fetch(u)).json();
+function diffGM(a,b){const out={};for(const v in a){out[v]={};for(const m in a[v]){const s3=a[v][m],s2=(b[v]||{})[m];if(!s2)continue;
+  out[v][m]=s3.map((x,i)=>(x==null||s2[i]==null)?null:x-s2[i]);}}return out;}
+async function loadScenarioData(scen){SCEN=scen;
+  if(scen==="S3-S2"){const [m3,g3,g2]=await Promise.all([j("data/S3/manifest.json"),j("data/S3/globalmeans.json"),j("data/S2/globalmeans.json")]);
+    M=m3;GM=diffGM(g3,g2);OBS={};RMSE=null;}
+  else{M=await j(`data/${scen}/manifest.json`);GM=await j(`data/${scen}/globalmeans.json`);
+    try{OBS=await j(`data/${scen}/obs.json`);}catch(e){OBS={};}
+    try{RMSE=await j(`data/${scen}/rmse.json`);}catch(e){RMSE=null;}}
+}
+async function binFetch(scen,v,l){const ext=(M.binext||".bin");const raw=await(await fetch(`data/${scen}/${v}/${l}${ext}`)).arrayBuffer();
+  // Pre-gzipped bins (static hosts can't set Content-Encoding reliably): detect gzip magic (1f 8b) and inflate; else use raw.
+  const u=new Uint8Array(raw);let b=raw;
+  if(u.length>1&&u[0]===0x1f&&u[1]===0x8b)b=await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  return new Int16Array(b);}
+function populateSelects(){const pv=$("variable").value,pm=$("model").value;
+  $("variable").innerHTML="";$("model").innerHTML="";
+  M.variables.forEach(v=>{const o=document.createElement("option");o.value=o.textContent=v.name;$("variable").appendChild(o);});
+  M.models.forEach(m=>{const o=document.createElement("option");o.value=o.textContent=m;$("model").appendChild(o);});
+  if([...$("variable").options].some(o=>o.value===pv))$("variable").value=pv;
+  if([...$("model").options].some(o=>o.value===pm))$("model").value=pm;
+  else $("model").value=M.models.find(m=>!m.startsWith("ENSEMBLE"))||M.models[0];}
+function wireScenarioButtons(){document.querySelectorAll(".scenbtn").forEach(b=>b.onclick=()=>{
+  if(b.classList.contains("active"))return;
+  document.querySelectorAll(".scenbtn").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+  switchScenario(b.dataset.scen);});}
+async function switchScenario(scen){$("status").textContent="loading "+scen+"…";
+  for(const c of [cache,climCache,trendCache])for(const k in c)delete c[k];
+  await loadScenarioData(scen);
+  document.body.classList.toggle("scendiff",scen==="S3-S2");
+  populateSelects();$("time").max=M.nt-1;if(T>M.nt-1)T=M.nt-1;$("time").value=T;
+  setDefaultRange();await refresh();drawGlobalMean();drawIntercomp();drawRMSEBox();replotSeries();
+  $("status").textContent=scen+" ✓";}
+function isDiv(){return SCEN==="S3-S2"||curMode()==="anom"||curMode()==="diff"||curMode()==="trend"||vmeta(curVar()).diverging;}
 
 function setDefaultRange(){const vm=vmeta(curVar()),m=curMode();let lo,hi;
-  if(m==="value"){vm.diverging?(hi=vm.vmax,lo=-vm.vmax):(lo=vm.vmin,hi=vm.vmax);}
+  if(SCEN==="S3-S2"&&m!=="trend"){const a=+((vm.vmax-vm.vmin)*0.15).toFixed(3);hi=a;lo=-a;}
+  else if(m==="value"){vm.diverging?(hi=vm.vmax,lo=-vm.vmax):(lo=vm.vmin,hi=vm.vmax);}
   else if(m==="trend"){const a=+((vm.vmax-vm.vmin)*0.15).toFixed(3);hi=a;lo=-a;}
   else{const a=+((vm.vmax-vm.vmin)*(m==="diff"?0.5:0.3)).toFixed(3);hi=a;lo=-a;}
   $("vmin").value=lo;$("vmax").value=hi;
@@ -82,8 +114,12 @@ function pctRange(){const v=[];for(const x of disp)if(!isNaN(x))v.push(x);if(!v.
   else{$("vmin").value=lo.toFixed(3);$("vmax").value=hi.toFixed(3);}}
 
 async function fetchField(v,l){const kk=key(v,l);if(cache[kk])return cache[kk];
-  $("status").textContent="loading "+v+"/"+l+"…";const b=await(await fetch(`data/${v}/${l}.bin`)).arrayBuffer();
-  cache[kk]=new Int16Array(b);$("status").textContent=v+"/"+l+" ✓";return cache[kk];}
+  $("status").textContent="loading "+v+"/"+l+"…";let out;
+  if(SCEN==="S3-S2"){const [a3,a2]=await Promise.all([binFetch("S3",v,l),binFetch("S2",v,l)]);
+    const F=M.fill;out=new Int16Array(a3.length);
+    for(let i=0;i<out.length;i++){if(a3[i]===F||a2[i]===F){out[i]=F;continue;}const d=a3[i]-a2[i];out[i]=d>=32767?32767:d<=-32767?-32767:d;}}
+  else{out=await binFetch(SCEN,v,l);}
+  cache[kk]=out;$("status").textContent=v+"/"+l+" ✓";return out;}
 const NC=()=>M.nlat*M.nlon,off=t=>t*NC();
 function climatology(v,l,arr){const kk=key(v,l);if(climCache[kk])return climCache[kk];const nc=NC(),cl=new Float32Array(12*nc),cn=new Int32Array(12*nc);
   for(let t=0;t<M.nt;t++){const cm=t%12,o=off(t);for(let c=0;c<nc;c++){const r=arr[o+c];if(r!==M.fill){cl[cm*nc+c]+=r;cn[cm*nc+c]++;}}}

@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TRENDY v14 Explorer</title>
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 <script defer src="vendor/d3.min.js"></script>
 <script defer src="vendor/d3-geo-projection.min.js"></script>
 <script defer src="vendor/topojson-client.min.js"></script>
-<script defer src="app.js?v=13"></script>
+<script defer src="app.js?v=14"></script>
 </head>
 <body>
 <div id="boot"><div class="boot-card"><div class="boot-title">TRENDY&nbsp;v14 Explorer</div>
@@ -16,7 +16,12 @@
   <div class="boot-track"><div class="boot-bar" id="boot-bar"></div></div></div></div>
 
 <header>
-  <div class="brand"><span class="dot"></span> TRENDY v14 / S2 <span class="brand-sub">land-carbon explorer</span></div>
+  <div class="brand"><span class="dot"></span> TRENDY v14 <span class="brand-sub">land-carbon explorer</span></div>
+  <div class="scenwrap" id="scenwrap">
+    <button type="button" class="scenbtn active" data-scen="S2">S2<em>fixed land use</em></button>
+    <button type="button" class="scenbtn" data-scen="S3">S3<em>+ land-use change</em></button>
+    <button type="button" class="scenbtn" data-scen="S3-S2">S3−S2<em>land-use signal</em></button>
+  </div>
   <div class="kpis">
     <div class="kpi"><div class="kpi-v" id="kpi-mean">–</div><div class="kpi-k">global mean</div></div>
     <div class="kpi"><div class="kpi-v" id="kpi-valid">–</div><div class="kpi-k">valid pixels</div></div>

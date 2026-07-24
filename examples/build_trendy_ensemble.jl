@@ -20,7 +20,7 @@ Usage: julia --project=. examples/build_trendy_ensemble.jl
 using NCDatasets
 using Printf
 
-const INROOT   = "/home/renatob/data/ilamb_output_v14_S2"
+const INROOT   = get(ENV, "GM_INROOT", "/home/renatob/data/ilamb_output_v14_S2")
 const OUTMODEL = "TRENDY-ENSEMBLE"
 const Y0, Y1   = 1980, 2024
 const NLON, NLAT = 720, 360               # 0.5 deg

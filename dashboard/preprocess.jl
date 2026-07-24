@@ -54,8 +54,8 @@ const BADENS = Dict("pr" => ["ED"])
 const FILLI16   = Int16(-32768)
 const Y0, Y1    = 1980, 2024
 const NLON, NLAT = 360, 180
-const INROOT    = "/home/renatob/data/ilamb_output_v14_S2"
-const OUTROOT   = joinpath(@__DIR__, "site", "data")
+const INROOT    = get(ENV, "GM_INROOT",  "/home/renatob/data/ilamb_output_v14_S2")
+const OUTROOT   = get(ENV, "GM_OUTROOT", joinpath(@__DIR__, "site", "data"))
 
 tlon = collect(-179.5:1.0:179.5)
 tlat = collect(-89.5:1.0:89.5)
