@@ -125,8 +125,9 @@ function climatology(v,l,arr){const kk=key(v,l);if(climCache[kk])return climCach
   for(let t=0;t<M.nt;t++){const cm=t%12,o=off(t);for(let c=0;c<nc;c++){const r=arr[o+c];if(r!==M.fill){cl[cm*nc+c]+=r;cn[cm*nc+c]++;}}}
   for(let i=0;i<cl.length;i++)cl[i]=cn[i]?cl[i]/cn[i]:NaN;climCache[kk]=cl;return cl;}
 function trendMap(v,l,arr,scale){const kk=key(v,l);if(trendCache[kk])return trendCache[kk];const nc=NC(),out=new Float32Array(nc);
+  const perDec=M.cadence==="annual"?10:120,minN=M.cadence==="annual"?10:24;  // per-decade steps + min length, cadence-aware (annual store → short-record models like CARDAMOM 2003- now get a trend)
   for(let c=0;c<nc;c++){let n=0,sx=0,sy=0,sxx=0,sxy=0;for(let t=0;t<M.nt;t++){const r=arr[off(t)+c];if(r===M.fill)continue;const y=r*scale;n++;sx+=t;sy+=y;sxx+=t*t;sxy+=t*y;}
-    if(n>=24){const d=n*sxx-sx*sx;out[c]=d?((n*sxy-sx*sy)/d)*120:NaN;}else out[c]=NaN;}  // slope per decade (120 months)
+    if(n>=minN){const d=n*sxx-sx*sx;out[c]=d?((n*sxy-sx*sy)/d)*perDec:NaN;}else out[c]=NaN;}  // slope per decade
   trendCache[kk]=out;return out;}
 
 async function refresh(){const v=curVar(),l=curLayer(),mode=curMode(),scale=vmeta(v).scale;
@@ -230,7 +231,7 @@ function replotSeries(){if(!region||!refresh._c)return;const s0=regionSeries();i
   const s=transform(s0);const f=linfit(s);const v=curVar(),u=vmeta(v).units;
   const lbl=(region.i0===region.i1&&region.j0===region.j1)?`cell ${M.lat[region.j0].toFixed(1)}°,${M.lon[region.i0].toFixed(1)}°`:`region ${M.lat[region.j0].toFixed(0)}–${M.lat[region.j1].toFixed(0)}°N, ${M.lon[region.i0].toFixed(0)}–${M.lon[region.i1].toFixed(0)}°E`;
   $("tstitle").textContent=lbl;
-  const slope=f?(f.b*120):NaN; // per decade
+  const slope=f?(f.b*(M.cadence==="annual"?10:120)):NaN; // per decade (cadence-aware)
   $("tsinfo").textContent=`${curLayer()} · ${v} (${u})`+(isNaN(slope)?"":` · trend ${slope>=0?"+":""}${slope.toPrecision(2)} /decade`)+($("deseason").checked?" · deseasonalized":"")+($("detrend").checked?" · detrended":"");
   linePlot($("ts"),s,"#4cc38a",f);}
 
